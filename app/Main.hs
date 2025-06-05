@@ -10,7 +10,7 @@ import           Effectful.Concurrent
 import           WebEff.App
 import           WebEff.DOM
 import qualified WebEff.DOM.FFI.Types as FFI
-
+import           WebEff.DOM.Types (onClick_)
 
 --------------------------------------------------------------------------------
 foreign export javascript "hs_start"
@@ -60,7 +60,7 @@ myApp = AppSpec
   , initialModel   = MyModel "woei"
   }
 
-myView m = div_ []
+myView m = div_ [ onClick_ SayHello ]
                 [ p_ [] [text_ $ myMessage m]
                 , text_ "test"
                 ]

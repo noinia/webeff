@@ -19,19 +19,28 @@ import           WebEff.DOM.Types
 
 --------------------------------------------------------------------------------
 
-text_ :: Default a => Text -> Html a action
+text_ :: Default a => Text -> Html a msg
 text_ = flip TextNode def
 
+-- | Constructs an Element with the given name, attributes, and children.
 el_                :: Default a
-                   => ElementName -> [Attribute action] -> [Html a action] -> Html a action
-el_ elName ats chs = Node elName def (Map.fromList ats) (Seq.fromList $ coerce chs)
+                   => ElementName -> [Attribute msg] -> [Html a msg] -> Html a msg
+el_ elName ats chs = Node elName def ats' evts' (Seq.fromList $ coerce chs)
+  where
+    (ats', evts') = flip foldMap ats $ \case
+      EventAttr eventName msg -> (mempty, Map.singleton eventName msg)
+      Attr      attrName val  -> (Map.singleton attrName val, mempty)
+
 
 -- | Construct an element (internal function that avoids having to wrap the AttributeName)
-el'        :: Default a => Text -> [Attribute action] -> [Html a action] -> Html a action
+el'        :: Default a => Text -> [Attribute msg] -> [Html a msg] -> Html a msg
 el' elName = el_ (ElementName elName)
 
-div_ :: Default a => [Attribute action] -> [Html a action] -> Html a action
+div_ :: Default a => [Attribute msg] -> [Html a msg] -> Html a msg
 div_ = el' "div"
 
-p_ :: Default a => [Attribute action] -> [Html a action] -> Html a action
+p_ :: Default a => [Attribute msg] -> [Html a msg] -> Html a msg
 p_ = el' "p"
+
+button_ :: Default a => [Attribute msg] -> [Html a msg] -> Html a msg
+button_ = el' "button"

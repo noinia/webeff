@@ -45,8 +45,8 @@ instance IsEventTarget Window where
 instance IsEventTarget Document where
   asEventTarget = coerce
 
--- instance IsEventTarget Element where
---   asEventTarget = coerce
+instance IsEventTarget Node where
+  asEventTarget = coerce
 
 
 --------------------------------------------------------------------------------

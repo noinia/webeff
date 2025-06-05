@@ -1,10 +1,16 @@
+{-# LANGUAGE OverloadedStrings  #-}
 module WebEff.DOM.Types
   ( Attribute(..)
   , AttributeValue(..)
   , (=:)
+  , AttributeName
+  , EventName
 
   , AttrValueConstraints
   , NodeRef
+
+
+  , onClick_
   ) where
 
 
@@ -18,46 +24,62 @@ import qualified Data.Text as Text
 import           Data.Typeable
 import           Effectful
 import           WebEff.DOM.FFI as FFI
-import           WebEff.DOM.FFI.Types (ElementName(..), AttributeName(..))
+import           WebEff.DOM.FFI.Types (ElementName(..), AttributeName, EventName(..))
 import qualified WebEff.DOM.FFI.Types as FFI
 
 --------------------------------------------------------------------------------
 
 type NodeRef = FFI.Node
 
+-- | Constraints that we need ton the attribute values to marshall them.
 type AttrValueConstraints a = (HasSetAttributeValue a, Typeable a, Eq a)
 
-data AttributeValue msg where
-    Message   :: msg -> AttributeValue msg
-    AttrValue :: AttrValueConstraints value => value -> AttributeValue msg
+-- | An attribute value is either an actual value (of a type that can be marshalled and
+-- set in JS).
+data AttributeValue where
+  AttrValue :: AttrValueConstraints value => value -> AttributeValue
 
-instance Eq msg => Eq (AttributeValue msg) where
-  (Message msg)          == (Message msg')          = msg == msg'
+instance Eq AttributeValue where
   (AttrValue (val :: a)) == (AttrValue (val' :: b)) = case eqT @a @b of
-                                                            Just Refl -> val == val'
-                                                            _         -> False
-  _                      == _                       = False
+                                                        Just Refl -> val == val'
+                                                        _         -> False
+
+-- instance Functor AttributeValue where
+--   fmap f = \case
+--     Message msg -> Message (f msg)
+--     AttrValue x -> AttrValue x
+
+-- instance Foldable AttributeValue where
+--   foldMap f = \case
+--     Message msg -> f msg
+--     AttrValue _ -> mempty
+
+-- instance Traversable AttributeValue where
+--   traverse f = \case
+--     Message msg -> Message <$> f msg
+--     AttrValue x -> pure $ AttrValue x
 
 
-instance Functor AttributeValue where
-  fmap f = \case
-    Message msg -> Message (f msg)
-    AttrValue x -> AttrValue x
+--------------------------------------------------------------------------------
 
-instance Foldable AttributeValue where
-  foldMap f = \case
-    Message msg -> f msg
-    AttrValue _ -> mempty
+-- | An attribute
+data Attribute msg = EventAttr EventName msg
+                   | Attr      AttributeName AttributeValue
+                   deriving (Eq,Functor,Foldable,Traversable)
 
-instance Traversable AttributeValue where
-  traverse f = \case
-    Message msg -> Message <$> f msg
-    AttrValue x -> pure $ AttrValue x
-
-
-type Attribute action = (AttributeName, AttributeValue action)
-
-
+-- | Shorthand for assigning attribute values
 (=:)            :: AttrValueConstraints value
-                => AttributeName -> value -> Attribute action
-attrName =: val = (attrName, AttrValue val)
+                => AttributeName -> value -> Attribute msg
+attrName =: val = Attr attrName (AttrValue val)
+
+-- (-:) :: EventName -> msg -> Attribute msg
+-- evtName -: msg = EventAttr evtName msg
+
+
+
+
+
+
+
+
+onClick_ = EventAttr (EventName "onclick")
