@@ -7,6 +7,8 @@ module WebEff.DOM.Attribute
   , EventName
 
   , AttrValueConstraints
+
+  , EventHandler(..)
   ) where
 
 import           Data.Bifoldable
@@ -19,7 +21,7 @@ import qualified Data.Text as Text
 import           Data.Typeable
 import           Effectful
 import           WebEff.DOM.FFI as FFI
-import           WebEff.DOM.FFI.Types (NodeRef, ElementName(..), AttributeName, EventName(..))
+import           WebEff.DOM.FFI.Types (NodeRef, ElementName(..), AttributeName, EventName(..), Event)
 import qualified WebEff.DOM.FFI.Types as FFI
 
 --------------------------------------------------------------------------------
@@ -70,3 +72,22 @@ attrName =: val = Attr attrName (AttrValue val)
 -- evtName -: msg = EventAttr evtName msg
 
 (-:) = ($)
+
+
+--------------------------------------------------------------------------------
+
+-- | An event handler, the main point is to parse event
+newtype EventHandler msg = EventHandler { runEventHandler :: Event -> msg }
+                         deriving (Functor)
+
+-- instance  Foldable EventHandler where
+--   foldMap f (EventHandler g) = f . g
+
+-- instance Traversable EventHandler where
+--   traverse f (EventHandler g) =
+
+
+--     EventHandler <$> f . g
+
+--   f . g :: Event -> f b
+--   -- want: f (Event -> b)
