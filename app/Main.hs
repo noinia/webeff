@@ -5,8 +5,10 @@ import qualified Data.Map as Map
 import           Data.Monoid
 import qualified Data.Sequence as Seq
 import qualified Data.Text as Text
+import           Data.Text (Text)
 import           Effectful
 import           Effectful.Concurrent
+import           Prelude hiding (div)
 import           WebEff.App
 import           WebEff.Attribute
 import           WebEff.DOM
@@ -53,6 +55,7 @@ data MyModel = MyModel { myMessage :: Text.Text}
 
 data MyMsg = SayHello
            | Skip
+           | SetMsg Text
 
 
 myApp :: DOM :> es => AppSpec es MyModel MyMsg
@@ -63,12 +66,31 @@ myApp = AppSpec
   , initialModel   = MyModel "woei"
   }
 
-myView m = div_ [ onClick_ SayHello ]
-                [ p_ [] [text_ $ myMessage m]
-                , text_ "test"
-                ]
+myView m = div []
+               [ h1  [ "class" =: classes ["header", "someclass"]
+                     , onClick -:  SayHello
+                     , "id"    =: ("theHeader" :: Text)
+                     ]
+                     [ textNode "header!"
+                     ]
+               , div [] [p [ onClick        -: SetMsg "woei"
+                           , "x-foo"        =: ("bar" :: Text)
+                           , "Style"        =: ("border: 1px solid black; width: 200px; height: 100px;" :: Text)
+                           , onPointerOver -: SetMsg "hovering"
+                           ]
+                           [ textNode $ myMessage m
+                           ]
+                        ]
+               ]
+
+
+-- myView m = div_ [ onClick_ SayHello ]
+--                 [ p_ [] [text_ $ myMessage m]
+--                 , text_ "test"
+--                 ]
 
 myUpdate   :: DOM :> es => MyModel -> MyMsg -> Eff es (Updated MyModel)
 myUpdate m = \case
   SayHello -> Unchanged <$ consoleLog (myMessage m)
   Skip     -> pure Unchanged
+  SetMsg t -> pure $ Changed (m { myMessage = t})

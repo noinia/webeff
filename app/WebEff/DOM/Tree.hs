@@ -24,6 +24,9 @@ import           WebEff.DOM.Attribute
 import           WebEff.DOM.FFI as FFI
 import           WebEff.DOM.FFI.Types (NodeRef, ElementName(..), AttributeName(..), IsNode(..), Event)
 import           WebEff.Send
+
+
+import Debug.Trace
 --------------------------------------------------------------------------------
 
 -- | Rose tree with nodes of type 'n' and leaves of type 'l'
@@ -147,11 +150,10 @@ applyAttributes             :: forall handlerEs es msg.
                                , DOM                     :> handlerEs
                                ) => Html NodeRef msg -> Eff es ()
 applyAttributes (Html tree) = flip firstA_ tree $ \(ElemData _ nodeRef ats evts) -> do
-  consoleLog "setting attrs"
   ifor_ ats $ \attrName (AttrValue val) ->
     setAttribute nodeRef attrName val
-  consoleLog $ "setting events " <> showT (length evts)
-  ifor_ evts $ \evtName msg ->
+  ifor_ evts $ \evtName msg -> do
+    consoleLog ("XXXXXXXX" <> showT evtName)
     addEventListener @handlerEs nodeRef evtName $ \event -> do consoleLog "XXX"
                                                                parseEvent event
                                                                sendMessage msg
@@ -186,11 +188,12 @@ renderWith           :: forall handlerEs es root msg a.
                         )
                      => root -> Html a msg -> Eff es (Html NodeRef msg)
 renderWith root html = do html' <- allocate html
-                          applyAttributes @handlerEs html'
                           addToDOM root html'
+                          applyAttributes @handlerEs html'
                           pure html'
 
 
 -- allocate =
 
+showT :: Show a => a -> Text
 showT = Text.pack . show

@@ -2,6 +2,7 @@ module WebEff.DOM.Attribute
   ( Attribute(..)
   , AttributeValue(..)
   , (=:)
+  , (-:)
   , AttributeName
   , EventName
 
@@ -64,5 +65,8 @@ data Attribute msg = EventAttr EventName msg
                 => AttributeName -> value -> Attribute msg
 attrName =: val = Attr attrName (AttrValue val)
 
+-- -- | Shorthand for creating an Event
 -- (-:) :: EventName -> msg -> Attribute msg
 -- evtName -: msg = EventAttr evtName msg
+
+(-:) = ($)
