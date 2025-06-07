@@ -73,7 +73,10 @@ executable webeff
         WebEff.DOM.Attribute
         WebEff.DOM.FFI
         WebEff.DOM.FFI.Types
+
+        WebEff.DOM.FFI.Classes
         WebEff.DOM.FFI.Raw
+
         WebEff.DOM.Tree
         WebEff.Html
 

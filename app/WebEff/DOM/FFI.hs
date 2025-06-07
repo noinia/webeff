@@ -30,7 +30,8 @@ import qualified Data.Text as Text
 import           Effectful
 import           Effectful.Dispatch.Static
 import           Effectful.Reader.Static
-import           GHC.Wasm.Prim
+import           GHC.Wasm.Prim (JSVal)
+import           WebEff.DOM.FFI.Classes
 import           WebEff.DOM.FFI.Raw
 import           WebEff.DOM.FFI.Types
 

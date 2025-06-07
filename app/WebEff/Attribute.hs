@@ -29,7 +29,7 @@ import           Data.Typeable
 import           Effectful
 import           WebEff.DOM.Attribute
 import           WebEff.DOM.FFI as FFI
-import           WebEff.DOM.FFI.Raw (HasSetAttributeValue(..))
+import           WebEff.DOM.FFI.Classes (HasSetAttributeValue(..))
 import           WebEff.DOM.FFI.Types (NodeRef, ElementName(..), AttributeName, EventName(..))
 import qualified WebEff.DOM.FFI.Types as FFI
 
