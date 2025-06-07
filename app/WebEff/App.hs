@@ -16,6 +16,7 @@ import           WebEff.DOM
 import           WebEff.DOM.FFI (jsBody, CanRunHandler, runCanRunHandler)
 import qualified WebEff.DOM.FFI.Types as FFI
 import           WebEff.Send
+import           WebEff.Updated
 
 --------------------------------------------------------------------------------
 
@@ -35,10 +36,6 @@ data AppSpec es model msg =
 type View a msg = Html (HandlerEs msg) a msg
 
 
--- | Type indicating whether the model has changed. This is essentially just a 'Maybe
--- model'.
-data Updated model = Unchanged | Changed model
-                   deriving (Show,Eq,Ord,Functor,Foldable,Traversable)
 
 --------------------------------------------------------------------------------
 
@@ -46,11 +43,6 @@ data Updated model = Unchanged | Changed model
 queueSize = 1024
 
 --------------------------------------------------------------------------------
-
-
--- runRender :: model -> View' NodeRef msg -> View' NodeRef msg -> Eff es ()
--- runRender = undefined
-
 
 -- | Runs a WebEff app
 runApp          :: forall appEs es model msg.

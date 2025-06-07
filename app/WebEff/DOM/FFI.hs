@@ -9,7 +9,9 @@ module WebEff.DOM.FFI
 
   , createTextNode, setTextContent
 
-  , createElement, appendChild, removeChild
+  , createElement
+  , removeSelf
+  , appendChild, removeChild
 
   , setAttribute, removeAttribute
   , HasSetAttributeValue(..)
@@ -83,6 +85,10 @@ setTextContent node content = unsafeEff_
 createElement                        :: DOM :> es => ElementName -> Eff es Node
 createElement (ElementName elemName) = unsafeEff_ $ js_createElement (textToJSString elemName)
 
+-- | Delete the current element
+removeSelf      :: (DOM :> es, IsNode node) => node  -> Eff es ()
+removeSelf node = unsafeEff_  $ js_removeSelf (asNode node)
+
 
 appendChild              :: (DOM :> es, IsNode parent, IsNode child)
                          => parent -> child  -> Eff es ()
@@ -141,6 +147,8 @@ runCanRunHandler handlerSetup = evalStaticRep (HandlerSetup handlerSetup)
 type EventHandlerRunner handlerEs = Eff handlerEs () -> IO ()
 
 
+
+
 -- | Add an Event Listener.
 addEventListener                           :: forall handlerEs es eventTarget msg.
                                               ( IsEventTarget eventTarget
@@ -150,7 +158,7 @@ addEventListener                           :: forall handlerEs es eventTarget ms
                                            => eventTarget
                                            -> EventName
                                            -> (Event -> Eff handlerEs ())
-                                           -> Eff es ()
+                                           -> Eff es JsEventListener
 addEventListener target (EventName eventType) listener = do
     -- get the eventHandlerRunner; i.e. the thing that we use to run the Eff hanlder () in the
     -- IO monad.
@@ -163,17 +171,18 @@ addEventListener target (EventName eventType) listener = do
       js_addEventListener (asEventTarget target)
                           (textToJSString eventType)
                           listenerRef
+      pure listenerRef
 
+-- | Removes the given event listener
 removeEventListener                 :: (IsEventTarget eventTarget, DOM :> es)
                                     => eventTarget
                                     -> EventName
-                                    -> JSVal -- EventListener ()
+                                    -> JsEventListener
                                     -> Eff es ()
 removeEventListener target
                     (EventName eventType)
                     listener' = unsafeEff_ $
   js_remove_event_listener (asEventTarget target) (textToJSString eventType) listener'
-
 
 
 --------------------------------------------------------------------------------

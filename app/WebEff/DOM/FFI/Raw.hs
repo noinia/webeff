@@ -51,6 +51,9 @@ foreign import javascript unsafe "$1.insertBefore($2)"
 foreign import javascript unsafe "$1.removeChild($2)"
   js_removeChild :: Node -> Node -> IO ()
 
+foreign import javascript unsafe "$1.remove()"
+  js_removeSelf :: Node -> IO ()
+
 --------------------------------------------------------------------------------
 -- * Setting Attributes
 
@@ -77,16 +80,22 @@ foreign import javascript unsafe "$1.removeAttribute($2)"
 --------------------------------------------------------------------------------
 
 foreign import javascript "wrapper sync"
-  js_mkEventHandler :: (JSVal -> IO ()) -> IO JSVal
+  js_mkEventHandler :: (JSVal -> IO ()) -> IO JsEventListener
 
 foreign import javascript unsafe "$1.addEventListener($2,$3)"
   js_addEventListener :: EventTarget
                       -> JSString
-                      -> JSVal
+                      -> JsEventListener
                       -> IO ()
 
 foreign import javascript unsafe "$1.removeEventListener($2,$3)"
-  js_remove_event_listener :: EventTarget -> JSString -> JSVal -> IO ()
+  js_remove_event_listener :: EventTarget -> JSString -> JsEventListener -> IO ()
+
+
+-- foreign import javascript unsafe "$1 => {}
+-- $1.removeEventListener($2,$3)"
+--   js_remove_event_listeners :: EventTarget -> JSString -> IO ()
+
 
 
 --------------------------------------------------------------------------------

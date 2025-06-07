@@ -19,7 +19,11 @@ textToJSString = toJSString . Text.unpack
 newtype Event = Event JSVal
   -- deriving stock (Show,Eq,Ord)
 
-newtype JsEventListener a = JsEventListener (Event -> IO a)
+-- newtype JsEventListener a = JsEventListener (Event -> IO a)
+
+-- | Reference to a JSListener
+newtype JsEventListener = JsEventListener JSVal
+
 
 -- | The name of an event 'eg 'click'
 newtype EventName = EventName Text

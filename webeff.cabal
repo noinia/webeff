@@ -2,7 +2,7 @@ cabal-version:      3.14
 name:               webeff
 version:            0.1.0.0
 -- synopsis:
--- description:
+description:        MVC (Model View Controller) style Web framework using Effectful
 license:            MIT
 license-file:       LICENSE
 author:             Frank Staals
@@ -81,6 +81,7 @@ executable webeff
         WebEff.Html
 
         WebEff.Send
+        WebEff.Updated
 
     -- other-extensions:
     build-depends:
