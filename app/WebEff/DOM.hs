@@ -18,9 +18,6 @@ module WebEff.DOM
 
   , renderWith
   , NodeRef
-
-
-  , module WebEff.DOM.Elements
   ) where
 
 import           Data.Bifoldable

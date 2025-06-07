@@ -1,2 +1,4 @@
 *~
 dist-newstyle
+pub/bin.wasm
+pub/ghc_wasm_jsffi.js

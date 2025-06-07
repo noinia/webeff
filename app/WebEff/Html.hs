@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module WebEff.DOM.Elements
+module WebEff.Html
   ( text_
   , el_
   , div_

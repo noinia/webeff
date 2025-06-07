@@ -8,13 +8,16 @@ import qualified Data.Text as Text
 import           Effectful
 import           Effectful.Concurrent
 import           WebEff.App
+import           WebEff.Attributes
+import           WebEff.Attributes (onClick_)
 import           WebEff.DOM
 import qualified WebEff.DOM.FFI.Types as FFI
-import           WebEff.DOM.Types (onClick_)
 
 --------------------------------------------------------------------------------
+
 foreign export javascript "hs_start"
   main :: IO ()
+
 --------------------------------------------------------------------------------
 
 
@@ -65,7 +68,7 @@ myView m = div_ [ onClick_ SayHello ]
                 , text_ "test"
                 ]
 
-myUpdate   :: DOM :> es => MyModel -> MyMsg -> Eff es MyModel
+myUpdate   :: DOM :> es => MyModel -> MyMsg -> Eff es (Updated MyModel)
 myUpdate m = \case
-  SayHello -> m <$ consoleLog (myMessage m)
-  Skip     -> pure m
+  SayHello -> Unchanged <$ consoleLog (myMessage m)
+  Skip     -> pure Unchanged

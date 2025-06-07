@@ -1,6 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 module WebEff.App
   ( AppSpec(..)
+  , Updated(..)
   , View
 
   , runApp
@@ -22,7 +23,7 @@ import           WebEff.Send
 data AppSpec es model msg =
   AppSpec { render         :: model -> View () msg
             -- ^ Function used to render the view
-          , controller     :: model -> msg -> Eff es model
+          , controller     :: model -> msg -> Eff es (Updated model)
             -- ^ Our controller that dispatches how to handle actions
           , initialMessage :: Maybe msg
             -- ^ Some initial message to fire upon starting the app
@@ -34,7 +35,10 @@ data AppSpec es model msg =
 type View a msg = Html a msg
 
 
--- type View' a msg = Html a msg
+-- | Type indicating whether the model has changed. This is essentially just a 'Maybe
+-- model'.
+data Updated model = Unchanged | Changed model
+                   deriving (Show,Eq,Ord,Functor,Foldable,Traversable)
 
 --------------------------------------------------------------------------------
 
@@ -74,10 +78,14 @@ runApp AppSpec{ .. } = do queue <- atomically $ do q <- newTBQueue queueSize
 
         process                          :: model -> View NodeRef msg -> Eff es ()
         process currentModel currentView = do
-            msg <- atomically $ readTBQueue queue
-            newModel <- liftEff $ controller currentModel msg
-            newView  <- runRender newModel -- TODO: this is not really right yet but whatever
-            process newModel newView
+            msg      <- atomically $ readTBQueue queue
+            liftEff (controller currentModel msg) >>= \case
+              Unchanged        -> process currentModel currentView
+                                  -- model is unchanged, so therefore the view is
+                                  -- unchanged as well
+              Changed newModel -> do newView  <- runRender newModel
+                                     -- TODO: this is not really right yet but whatever
+                                     process newModel newView
 
         liftEff :: Eff appEs a -> Eff es a
         liftEff = inject -- for whatever reason ghc doesn't  like it if we inline this.

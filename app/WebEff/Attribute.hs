@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings  #-}
-module WebEff.DOM.Types
+module WebEff.Attribute
   ( Attribute(..)
   , AttributeValue(..)
   , (=:)
