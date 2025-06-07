@@ -29,11 +29,10 @@ import           Data.Text (Text)
 import qualified Data.Text as Text
 import           Data.Typeable
 import           Effectful
-import           WebEff.DOM.Elements
+import           WebEff.DOM.Attribute
 import           WebEff.DOM.FFI
-import           WebEff.DOM.FFI.Types (ElementName(..), AttributeName(..))
+import           WebEff.DOM.FFI.Types (NodeRef, ElementName(..), AttributeName(..))
 import           WebEff.DOM.Tree
-import           WebEff.DOM.Types
 
 --------------------------------------------------------------------------------
 

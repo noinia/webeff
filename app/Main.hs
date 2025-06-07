@@ -8,10 +8,10 @@ import qualified Data.Text as Text
 import           Effectful
 import           Effectful.Concurrent
 import           WebEff.App
-import           WebEff.Attributes
-import           WebEff.Attributes (onClick_)
+import           WebEff.Attribute
 import           WebEff.DOM
 import qualified WebEff.DOM.FFI.Types as FFI
+import           WebEff.Html
 
 --------------------------------------------------------------------------------
 

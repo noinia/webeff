@@ -20,11 +20,10 @@ import           Data.Text (Text)
 import qualified Data.Text as Text
 import           Data.Traversable
 import           Effectful
+import           WebEff.DOM.Attribute
 import           WebEff.DOM.FFI as FFI
-import           WebEff.DOM.FFI.Types (ElementName(..), AttributeName(..), IsNode(..), Event)
-import           WebEff.DOM.Types
+import           WebEff.DOM.FFI.Types (NodeRef, ElementName(..), AttributeName(..), IsNode(..), Event)
 import           WebEff.Send
-
 --------------------------------------------------------------------------------
 
 -- | Rose tree with nodes of type 'n' and leaves of type 'l'

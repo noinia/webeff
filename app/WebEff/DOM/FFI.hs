@@ -138,7 +138,7 @@ type EventHandlerRunner handlerEs = Eff handlerEs () -> IO ()
 
 
 -- | Add an Event Listener.
-addEventListener                           :: forall handlerEs es eventTarget.
+addEventListener                           :: forall handlerEs es eventTarget msg.
                                               ( IsEventTarget eventTarget
                                               , DOM                     :> es
                                               , CanRunHandler handlerEs :> es

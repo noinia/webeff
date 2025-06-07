@@ -68,13 +68,14 @@ executable webeff
     other-modules:
         WebEff.App
 
-        WebEff.Attributes
+        WebEff.Attribute
         WebEff.DOM
-        WebEff.Html
+        WebEff.DOM.Attribute
         WebEff.DOM.FFI
         WebEff.DOM.FFI.Types
         WebEff.DOM.FFI.Raw
         WebEff.DOM.Tree
+        WebEff.Html
 
         WebEff.Send
 

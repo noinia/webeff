@@ -15,7 +15,7 @@ import           Data.Text (Text)
 import qualified Data.Text as Text
 import           WebEff.DOM.FFI.Types (ElementName(..), AttributeName(..))
 import           WebEff.DOM.Tree
-import           WebEff.DOM.Types
+import           WebEff.DOM.Attribute
 
 --------------------------------------------------------------------------------
 

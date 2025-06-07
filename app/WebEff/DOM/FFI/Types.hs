@@ -59,6 +59,9 @@ newtype ElementName = ElementName Text
 -- | A (reference to a) Node
 newtype Node = Node JSVal
 
+-- | Alias for Node
+type NodeRef = Node
+
 -- | Types that can act as a node
 class IsNode node where
   asNode :: node -> Node
