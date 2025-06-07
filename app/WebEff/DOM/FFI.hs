@@ -19,6 +19,9 @@ module WebEff.DOM.FFI
   , EventHandlerRunner
 
   , addEventListener, removeEventListener
+
+
+  , getProperty
   ) where
 
 import           Data.Coerce
@@ -169,3 +172,15 @@ removeEventListener target
                     (EventName eventType)
                     listener' = unsafeEff_ $
   js_remove_event_listener (asEventTarget target) (textToJSString eventType) listener'
+
+
+
+--------------------------------------------------------------------------------
+
+-- | Get a property of a particular item
+getProperty :: ( DOM :> es
+               , HasGetPropertyValue value
+               , Coercible object JSVal
+               ) => PropertyName -> object -> Eff es value
+getProperty (PropertyName prop) obj = unsafeEff_ $
+                                      js_getProperty (coerce obj) (textToJSString prop)

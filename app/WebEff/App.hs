@@ -32,7 +32,7 @@ data AppSpec es model msg =
           }
 
 -- | A view is just a HtmlTree
-type View a msg = Html a msg
+type View a msg = Html (HandlerEs msg) a msg
 
 
 -- | Type indicating whether the model has changed. This is essentially just a 'Maybe
@@ -90,20 +90,20 @@ runApp AppSpec{ .. } = do queue <- atomically $ do q <- newTBQueue queueSize
         liftEff :: Eff appEs a -> Eff es a
         liftEff = inject -- for whatever reason ghc doesn't  like it if we inline this.
 
-        handlerSetup :: Eff [Send msg,Concurrent,DOM,IOE] () -> IO ()
+        handlerSetup :: Eff (HandlerEs msg) () -> IO ()
         handlerSetup = runEff . evalDOM . runConcurrent . runSendWith queue
 
+type HandlerEs msg = [Send msg,Concurrent,DOM,IOE]
 
 
-renderView                                :: forall handlerEs es root msg a model.
+
+renderView                                :: forall es root msg a model.
                                              ( DOM :> es, FFI.IsNode root
-                                             , Send msg                :> handlerEs
-                                             , DOM                     :> handlerEs
                                              )
-                                          => (Eff handlerEs () -> IO ())
+                                          => (Eff (HandlerEs msg) () -> IO ())
                                           -> root
                                           -> (model -> View a msg)
                                           -> model
                                           -> Eff es (View NodeRef msg)
 renderView handlerSetup root render model =
-  runCanRunHandler handlerSetup $ renderWith @handlerEs root (render model)
+  runCanRunHandler handlerSetup $ renderWith root (render model)

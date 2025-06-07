@@ -20,7 +20,7 @@ common warnings
         base                     >= 4.20.0.0  && < 5
       -- , hexpat                   >= 0.20.13  && < 0.21
       , bytestring               >= 0.12     && < 0.13
-      , text                     >= 2.1      && < 2.2
+      , text                     >= 2.1.2    && < 2.2
       , effectful                >= 2.5.1    && < 2.6
       , effectful-core           >= 2.5.1    && < 2.6
       , containers               >= 0.7      && < 0.9

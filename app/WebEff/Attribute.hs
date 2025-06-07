@@ -36,34 +36,38 @@ import qualified WebEff.DOM.FFI.Types as FFI
 --------------------------------------------------------------------------------
 
 -- | Internal helper to create event attributes
-mkEvent   :: Text -> msg -> Attribute msg
+mkEvent   :: Text -> EventHandler es msg -> Attribute es msg
 mkEvent e = EventAttr (EventName e)
 
--- | An on-click event
-onClick :: msg -> Attribute msg
-onClick = mkEvent "click"
+-- | Internal helper to create event attributes
+mkEvent'       :: Text -> msg -> Attribute es msg
+mkEvent' e msg = mkEvent e (EventHandler $ const (pure msg))
 
-data PointerEvent = PointerEvent
+
+-- | An on-click event
+onClick :: msg -> Attribute es msg
+onClick = mkEvent' "click"
+
+newtype PointerEvent = PointerEvent { client :: (Int,Int)
+                                 --    , screen :: (Int,Int)
+                                 -- , page   ::
+                                    }
+                     deriving (Show,Eq)
 
 -- | onPointerOver event
-onPointerOver :: msg -> Attribute msg
-onPointerOver = mkEvent "pointerover"
--- onPointerOver   :: (PointerEvent -> msg) -> Attribute msg
--- onPointerOver f = mkEvent "onpointerover" . f
+onPointerOver   :: DOM :> es => (PointerEvent -> msg) -> Attribute es msg
+onPointerOver f = mkEvent "pointerover" (EventHandler $ fmap f <$> parsePointerEvent)
 
+parsePointerEvent       :: DOM :> es => FFI.Event -> Eff es PointerEvent
+parsePointerEvent event = PointerEvent <$> parseClient event
+
+parseClient       :: DOM :> es => FFI.Event -> Eff es (Int,Int)
+parseClient event = (,) <$> getProperty "clientX" event <*> getProperty "clientY" event
 
 
 -- | Renders classes
 classes :: Foldable f => f CssClass -> CssClass
 classes = CssClass . Text.unwords . map coerce . F.toList
-
-
-
-
-
-
-
-
 
 
 --------------------------------------------------------------------------------

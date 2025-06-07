@@ -68,29 +68,29 @@ allocateTextData (TextData t _) = TextData t <$> createTextNode t
 
 
 -- | Data for an actual element tag
-data ElemData msg n = ElemData {-#UNPACK#-}!ElementName
+data ElemData es msg n = ElemData {-#UNPACK#-}!ElementName
                                 -- ^ The tag
                                 n
                                 -- ^ satelite data
                                 (Map.Map AttributeName AttributeValue)
                                 -- ^ The Attributes
-                                (Map.Map EventName msg)
+                                (Map.Map EventName (EventHandler es msg))
                                 -- ^ The Events
                        deriving (Functor,Foldable,Traversable)
 
-instance Bifunctor ElemData where
-  bimap f g (ElemData tag x ats evts) = ElemData tag (g x) ats (fmap f evts)
+instance Bifunctor (ElemData es) where
+  bimap f g (ElemData tag x ats evts) = ElemData tag (g x) ats (fmap (fmap f) evts)
 
-instance Bifoldable ElemData where
-  bifoldMap f g (ElemData tag x _ evts) = g x <> foldMap f evts
+-- instance Bifoldable ElemData where
+--   bifoldMap f g (ElemData tag x _ evts) = g x <> foldMap f evts
 
-instance Bitraversable ElemData where
-  bitraverse f g (ElemData tag x ats evts) =
-    (\x' evts' -> ElemData tag x' ats evts') <$> g x <*> traverse f evts
+-- instance Bitraversable ElemData where
+--   bitraverse f g (ElemData tag x ats evts) =
+--     (\x' evts' -> ElemData tag x' ats evts') <$> g x <*> traverse f evts
 
 
 -- | Allocate an element
-allocateElemData :: DOM :> es => ElemData msg a -> Eff es (ElemData msg NodeRef)
+allocateElemData :: DOM :> es => ElemData handlerEs msg a -> Eff es (ElemData handlerEs msg NodeRef)
 allocateElemData (ElemData tag _ ats evts) =
   (\node -> ElemData tag node ats evts) <$> createElement tag
 
@@ -103,40 +103,41 @@ allocateElemData (ElemData tag _ ats evts) =
 
 
 -- | Type representing Html trees each node storing an extra value of type a
-newtype Html a msg = Html (Tree (ElemData msg a) (TextData a))
+newtype Html handlerEs a msg = Html (Tree (ElemData handlerEs msg a) (TextData a))
 
 pattern TextNode t x = Html (Leaf (TextData t x))
 pattern Node tag x ats evts chs = Html (Branch (ElemData tag x ats evts) chs)
 
 
-instance Functor (Html a) where
-  fmap = fmapDefault
-instance Foldable (Html a) where
-  foldMap = foldMapDefault
-instance Traversable (Html a) where
-  traverse f = secondA f
+instance Functor (Html handlerEs a) where
+  fmap f (Html tree) = Html $ first (first f) tree
 
-instance Bifunctor Html where
+-- instance Foldable (Html a) where
+--   foldMap = foldMapDefault
+-- instance Traversable (Html a) where
+--   traverse f = secondA f
+
+instance Bifunctor (Html handlerEs) where
   bimap f g (Html tree) = Html $ bimap (bimap g f) (fmap f) tree
     -- see bitraverse
 
-instance Bifoldable Html where
-  bifoldMap f g (Html tree) = bifoldMap (bifoldMap g f) (foldMap f) tree
+-- instance Bifoldable Html where
+--   bifoldMap f g (Html tree) = bifoldMap (bifoldMap g f) (foldMap f) tree
 
-instance Bitraversable Html where
-  bitraverse :: forall f a b msg msg'. Applicative f
-             => (a -> f b) -> (msg -> f msg') -> Html a msg -> f (Html b msg')
-  bitraverse f g (Html tree) = Html <$> bitraverse travBranch travLeaf tree
-    where
-      travBranch :: ElemData msg a -> f (ElemData msg' b)
-      travBranch = bitraverse g f
+-- instance Bitraversable Html where
+--   bitraverse :: forall f a b msg msg'. Applicative f
+--              => (a -> f b) -> (msg -> f msg') -> Html a msg -> f (Html b msg')
+--   bitraverse f g (Html tree) = Html <$> bitraverse travBranch travLeaf tree
+--     where
+--       travBranch :: ElemData msg a -> f (ElemData msg' b)
+--       travBranch = bitraverse g f
 
-      travLeaf :: TextData a -> f (TextData b)
-      travLeaf = traverse f
+--       travLeaf :: TextData a -> f (TextData b)
+--       travLeaf = traverse f
 
 
 -- | Create NodeRefs for all values.
-allocate             :: DOM :> es => Html a msg -> Eff es (Html NodeRef msg)
+allocate             :: DOM :> es => Html handlerEs a msg -> Eff es (Html handlerEs NodeRef msg)
 allocate (Html tree) = Html <$> bitraverse allocateElemData allocateTextData tree
 
 
@@ -148,28 +149,20 @@ applyAttributes             :: forall handlerEs es msg.
                                , CanRunHandler handlerEs :> es
                                , Send msg                :> handlerEs
                                , DOM                     :> handlerEs
-                               ) => Html NodeRef msg -> Eff es ()
+                               ) => Html handlerEs NodeRef msg -> Eff es ()
 applyAttributes (Html tree) = flip firstA_ tree $ \(ElemData _ nodeRef ats evts) -> do
   ifor_ ats $ \attrName (AttrValue val) ->
     setAttribute nodeRef attrName val
-  ifor_ evts $ \evtName msg -> do
-    consoleLog ("XXXXXXXX" <> showT evtName)
-    addEventListener @handlerEs nodeRef evtName $ \event -> do consoleLog "XXX"
-                                                               parseEvent event
+  ifor_ evts $ \evtName (EventHandler createMessage) ->
+    addEventListener @handlerEs nodeRef evtName $ \event -> do msg <- createMessage event
                                                                sendMessage msg
 
-
-
-parseEvent   :: DOM :> handlerEs => Event -> Eff handlerEs ()
-parseEvent _ = pure ()
-
-
 -- | Add the tree into the DOM at the given location
-addToDOM                  :: forall root es msg. (DOM :> es, IsNode root)
-                          => root -> Html NodeRef msg -> Eff es ()
+addToDOM                  :: forall handlerEs root es msg. (DOM :> es, IsNode root)
+                          => root -> Html handlerEs NodeRef msg -> Eff es ()
 addToDOM root (Html tree) = go root tree
   where
-    go        :: IsNode parent => parent -> Tree (ElemData msg NodeRef) (TextData NodeRef)
+    go        :: IsNode parent => parent -> Tree (ElemData handlerEs msg NodeRef) (TextData NodeRef)
               -> Eff es ()
     go parent = \case
       Leaf textNode       -> traverse_ (appendChild parent) textNode
@@ -186,14 +179,8 @@ renderWith           :: forall handlerEs es root msg a.
                         , DOM                     :> handlerEs
                         , IsNode root
                         )
-                     => root -> Html a msg -> Eff es (Html NodeRef msg)
+                     => root -> Html handlerEs a msg -> Eff es (Html handlerEs NodeRef msg)
 renderWith root html = do html' <- allocate html
                           addToDOM root html'
                           applyAttributes @handlerEs html'
                           pure html'
-
-
--- allocate =
-
-showT :: Show a => a -> Text
-showT = Text.pack . show

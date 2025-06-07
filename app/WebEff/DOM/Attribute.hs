@@ -58,13 +58,13 @@ instance Eq AttributeValue where
 --------------------------------------------------------------------------------
 
 -- | An attribute
-data Attribute msg = EventAttr EventName msg
-                   | Attr      AttributeName AttributeValue
-                   deriving (Eq,Functor,Foldable,Traversable)
+data Attribute es msg = EventAttr EventName (EventHandler es msg)
+                      | Attr      AttributeName AttributeValue
+                      deriving (Functor)
 
 -- | Shorthand for assigning attribute values
 (=:)            :: AttrValueConstraints value
-                => AttributeName -> value -> Attribute msg
+                => AttributeName -> value -> Attribute es msg
 attrName =: val = Attr attrName (AttrValue val)
 
 -- -- | Shorthand for creating an Event
@@ -77,8 +77,8 @@ attrName =: val = Attr attrName (AttrValue val)
 --------------------------------------------------------------------------------
 
 -- | An event handler, the main point is to parse event
-newtype EventHandler msg = EventHandler { runEventHandler :: Event -> msg }
-                         deriving (Functor)
+newtype EventHandler es msg = EventHandler { runEventHandler :: Event -> Eff es msg }
+                            deriving (Functor)
 
 -- instance  Foldable EventHandler where
 --   foldMap f (EventHandler g) = f . g

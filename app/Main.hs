@@ -37,9 +37,7 @@ foreign export javascript "hs_start"
 
 
 main :: IO ()
-main = do
-  putStrLn "Hello, Haskell!"
-  runEff . runConcurrent . evalDOM $ runApp @'[DOM] myApp
+main = runEff . runConcurrent . evalDOM $ runApp @'[DOM] myApp
 
 --------------------------------------------------------------------------------
 -- * FFI
@@ -51,11 +49,15 @@ main = do
 
 
 --------------------------------------------------------------------------------
-data MyModel = MyModel { myMessage :: Text.Text}
+data MyModel = MyModel { myMessage :: Text.Text
+                       , position  :: Maybe (Int,Int)
+                       }
+
 
 data MyMsg = SayHello
            | Skip
            | SetMsg Text
+           | UpdatePosition (Int,Int)
 
 
 myApp :: DOM :> es => AppSpec es MyModel MyMsg
@@ -63,7 +65,7 @@ myApp = AppSpec
   { render         = myView
   , controller     = myUpdate
   , initialMessage = Just SayHello
-  , initialModel   = MyModel "woei"
+  , initialModel   = MyModel "Initial" Nothing
   }
 
 myView m = div []
@@ -76,7 +78,7 @@ myView m = div []
                , div [] [p [ onClick        -: SetMsg "woei"
                            , "x-foo"        =: ("bar" :: Text)
                            , "Style"        =: ("border: 1px solid black; width: 200px; height: 100px;" :: Text)
-                           , onPointerOver -: SetMsg "hovering"
+                           , onPointerOver -: \pointerEvent -> UpdatePosition (client pointerEvent)
                            ]
                            [ textNode $ myMessage m
                            ]
@@ -91,6 +93,7 @@ myView m = div []
 
 myUpdate   :: DOM :> es => MyModel -> MyMsg -> Eff es (Updated MyModel)
 myUpdate m = \case
-  SayHello -> Unchanged <$ consoleLog (myMessage m)
-  Skip     -> pure Unchanged
-  SetMsg t -> pure $ Changed (m { myMessage = t})
+  SayHello           -> Unchanged <$ consoleLog (myMessage m)
+  Skip               -> pure Unchanged
+  SetMsg t           -> pure $ Changed (m { myMessage = t})
+  UpdatePosition pos -> Unchanged <$ consoleLog (Text.show pos)

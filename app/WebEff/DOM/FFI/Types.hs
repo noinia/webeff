@@ -96,3 +96,10 @@ newtype AttributeName = AttributeName Text
 --                     | AttributeNum    !Int
 --                     | AttributeBool   !Bool
 --                     deriving (Show)
+
+--------------------------------------------------------------------------------
+-- * Properties
+
+newtype PropertyName = PropertyName Text
+  deriving stock (Show,Eq,Ord)
+  deriving newtype (IsString)
