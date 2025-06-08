@@ -15,9 +15,12 @@ import           Effectful.Concurrent.STM
 import           WebEff.DOM
 import           WebEff.DOM.FFI (jsBody, CanRunHandler, runCanRunHandler)
 import qualified WebEff.DOM.FFI.Types as FFI
+import           WebEff.DOM.Tree (diffHtml)
 import           WebEff.Send
 import           WebEff.Updated
 
+import qualified Data.Text as Text
+import Debug.Trace
 --------------------------------------------------------------------------------
 
 -- | Data type declaring what an WebEffApp is
@@ -68,16 +71,23 @@ runApp AppSpec{ .. } = do queue <- atomically $ do q <- newTBQueue queueSize
         runRender :: model -> Eff es (View NodeRef msg)
         runRender = renderView handlerSetup body render
 
-        process                          :: model -> View NodeRef msg -> Eff es ()
+        process                          :: model -> View NodeRef msg
+                                         -> Eff es ()
         process currentModel currentView = do
             msg      <- atomically $ readTBQueue queue
             liftEff (controller currentModel msg) >>= \case
               Unchanged        -> process currentModel currentView
                                   -- model is unchanged, so therefore the view is
                                   -- unchanged as well
-              Changed newModel -> do newView  <- runRender newModel
-                                     -- TODO: this is not really right yet but whatever
-                                     process newModel newView
+              Changed newModel -> traceShow ("new model, diffing view") $
+                                  case diffHtml currentView (render newModel) of
+                Unchanged                     -> process newModel currentView
+                Changed (applyPatch, newView) -> do consoleLog (Text.pack "view changed")
+                                                    runCanRunHandler handlerSetup applyPatch
+                                                    process newModel newView
+
+        -- diffHtml' currentView newView =
+        --    $ diffHtml currentView newView
 
         liftEff :: Eff appEs a -> Eff es a
         liftEff = inject -- for whatever reason ghc doesn't  like it if we inline this.

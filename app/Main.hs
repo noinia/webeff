@@ -37,7 +37,8 @@ foreign export javascript "hs_start"
 
 
 main :: IO ()
-main = runEff . runConcurrent . evalDOM $ runApp @'[DOM] myApp
+-- main = runEff . runConcurrent . evalDOM $ runApp @'[DOM] myApp
+main = runEff . runConcurrent . evalDOM $ runApp @'[DOM] counterApp
 
 --------------------------------------------------------------------------------
 -- * FFI
@@ -97,3 +98,32 @@ myUpdate m = \case
   Skip               -> pure Unchanged
   SetMsg t           -> pure $ Changed (m { myMessage = t})
   UpdatePosition pos -> Unchanged <$ consoleLog (Text.show pos)
+
+
+
+--------------------------------------------------------------------------------
+
+
+counterApp :: DOM :> es => AppSpec es Int CounterMsg
+counterApp = AppSpec
+  { render         = counterView
+  , controller     = counterController
+  , initialMessage = Nothing
+  , initialModel   = 0
+  }
+
+data CounterMsg = Increment | Decrement
+
+counterController   :: DOM :> es => Int -> CounterMsg -> Eff es (Updated Int)
+counterController m = \case
+  Increment -> let m' = m + 1
+               in Changed m' <$ consoleLog (Text.show m')
+  Decrement -> let m' = m - 1
+               in Changed m' <$ consoleLog (Text.show m')
+
+counterView   :: Int -> View () CounterMsg
+counterView m = div []
+                    [ button [onClick Increment] [textNode "+"]
+                    , button [onClick Decrement] [textNode "-"]
+                    , textNode (Text.show m)
+                    ]

@@ -7,6 +7,7 @@ module WebEff.DOM.Tree
   , Tree(..)
 
   , renderWith
+  , diffHtml
   ) where
 
 import           Control.Monad (void)
@@ -60,6 +61,34 @@ instance Bitraversable Tree where
 
 --------------------------------------------------------------------------------
 
+type Patch es = Eff es ()
+
+
+class CanCombine t old where
+  -- | given that old and new are matched. Update old into new
+  combineMatching :: t old -> t new -> t old
+
+class CanCombine t old => CanPatch t old es where
+  -- | Compare old and new, creating a fine grained patch.
+  patch :: t old -> t new -> Updated (Patch es, t old)
+
+-- class CanReplace t old es where
+--   -- | Replaces old by new (without any checking)
+--   replace :: t old -> t new -> Updated (Patch es)
+
+
+-- data Patch es a = Patch Size (Eff es a)
+--                 deriving (Functor)
+
+-- instance Semigroup a => Semigroup (Patch es a) where
+--   (Patch sizeA a) <> (Patch sizeB b) = Patch (sizeA + sizeB) (a <> b)
+
+-- patch' = Changed . Patch 1
+
+
+
+--------------------------------------------------------------------------------
+
 -- | Data for 'Text' elements
 data TextData l = TextData { textContent :: {-#UNPACK#-}!Text -- ^ The text we store
                            , textData    :: l
@@ -69,24 +98,19 @@ data TextData l = TextData { textContent :: {-#UNPACK#-}!Text -- ^ The text we s
 allocateTextData                :: DOM :> es => TextData l -> Eff es (TextData NodeRef)
 allocateTextData (TextData t _) = TextData t <$> createTextNode t
 
-type Size = Int
-
-
-data Patch es a = Patch Size (Eff es a)
-                deriving (Functor)
-
-instance Semigroup a => Semigroup (Patch es a) where
-  (Patch sizeA a) <> (Patch sizeB b) = Patch (sizeA + sizeB) (a <> b)
-
-patch' = Changed . Patch 1
-
-
 
 -- | Computes the diff
-diffTextData :: DOM :> es => TextData NodeRef -> TextData new -> Updated (Patch es ())
+diffTextData :: DOM :> es => TextData NodeRef -> TextData new -> Updated (Patch es)
 diffTextData (TextData old nodeRef) (TextData new _)
   | old == new = Unchanged
-  | otherwise  = patch' (setTextContent nodeRef new)
+  | otherwise  = Changed $ setTextContent nodeRef new
+
+instance CanCombine TextData l where
+  combineMatching (TextData _ node) (TextData new _) = TextData new node
+
+instance DOM :> es => CanPatch TextData NodeRef es where
+  patch old new = (,combineMatching old new) <$> diffTextData old new
+  -- replace (TextData _ nodeRef) (TextData new _) = error "not implemented yet"
 
 
 -- | The Attributes of a Node
@@ -117,23 +141,23 @@ instance Bifunctor (ElemData es) where
 diffAttr :: DOM :> es
          => NodeRef
          -> AttributeName -> AttributeValue -> AttributeValue
-         -> Updated (Patch es ())
+         -> Updated (Patch es)
 diffAttr node attr old new@(AttrValue new')
   | old == new = Unchanged
-  | otherwise  = patch' (setAttribute node attr new')
+  | otherwise  = Changed $ setAttribute node attr new'
 
 -- | Diff the attributes of the given node. Produces a patch that we can apply to update
 -- the DOM (if an update is required).
 diffAttrs             :: forall es. DOM :> es => NodeRef -> Attributes -> Attributes
-                      -> Updated (Patch es ())
+                      -> Updated (Patch es)
 diffAttrs node oldAts = fold . Map.merge removeOldAttrs setNewAttrs diffExisting oldAts
                         -- we produce a Map AttrName (Updated (Patch es)), and then fold
                         -- it into a big patch.
   where
-    removeOldAttrs = Map.mapMissing $ \attr _old            -> patch' (removeAttribute node attr)
-    setNewAttrs    = Map.mapMissing $ \attr (AttrValue new) -> patch' (setAttribute node attr new)
+    removeOldAttrs = Map.mapMissing $ \attr _old            -> Changed (removeAttribute node attr)
+    setNewAttrs    = Map.mapMissing $ \attr (AttrValue new) -> Changed (setAttribute node attr new)
     diffExisting   :: Map.WhenMatched _
-                      AttributeName AttributeValue AttributeValue (Updated (Patch es ()))
+                      AttributeName AttributeValue AttributeValue (Updated (Patch es))
     diffExisting   = Map.zipWithMaybeMatched $ \attr old new -> case diffAttr node attr old new of
                                                                   Unchanged -> Nothing
                                                                   changed   -> Just changed
@@ -146,20 +170,20 @@ diffEvents              :: forall handlerEs es msg.
                            , DOM                     :> handlerEs
                            )
                         => NodeRef -> EventHandlers handlerEs msg -> EventHandlers handlerEs msg
-                        -> Updated (Patch es ())
+                        -> Updated (Patch es)
 diffEvents node oldEvts = fold . Map.merge removeOldAttrs setNewAttrs diffExisting oldEvts
                         -- we produce a Map EventName (Updated (Patch es)), and then fold
                         -- it into a big patch.
   where
     removeOldAttrs = Map.mapMissing $ \evtName old             ->
-                                        patch' (removeEventListeners node evtName old)
+                                        Changed (removeEventListeners node evtName old)
 
     setNewAttrs    = Map.mapMissing $ \evtName (EventHandler createMessage) ->
-                                        patch' (addNewEvent evtName createMessage)
+                                        Changed (addNewEvent evtName createMessage)
 
     diffExisting   :: Map.WhenMatched _ EventName (EventHandler handlerEs msg)
                                                   (EventHandler handlerEs msg)
-                                        (Updated (Patch es ()))
+                                        (Updated (Patch es))
     diffExisting   = Map.zipWithMaybeMatched $ \evt old new -> Nothing
       -- FIXME:: Assume they are the same for now
       -- case diffAttr node attr old new of
@@ -172,38 +196,122 @@ diffEvents node oldEvts = fold . Map.merge removeOldAttrs setNewAttrs diffExisti
     removeEventListeners _ _ _ = consoleLog "removing event listeners not yet implemented"
 
 
+instance CanCombine (ElemData handlerEs msg) old where
+  combineMatching old new = new { elemData = elemData old }
 
--- | Deiff an ElemDat
+instance ( DOM                     :> es
+         , CanRunHandler handlerEs :> es
+         , Send msg                :> handlerEs
+         , DOM                     :> handlerEs
+         ) => CanPatch (ElemData handlerEs msg) NodeRef es where
+  patch old new = (,combineMatching old new) <$> diffElemData old new
+
+-- | Diff an ElemData
+--
+-- pre: Assumes the tags are the same
 diffElemData :: forall handlerEs es msg new.
                 ( DOM                     :> es
                 , CanRunHandler handlerEs :> es
                 , Send msg                :> handlerEs
                 , DOM                     :> handlerEs
                 )
-             => ElemData handlerEs msg NodeRef
-             -> ElemData handlerEs msg new
-             -> Updated (Patch es (ElemData handlerEs msg NodeRef))
-diffElemData old@(ElemData oldTag nodeRef oldAts oldEvts)
-             new@(ElemData newTag _       newAts newEvts)
-    | oldTag /= newTag = Changed $ Patch (elemSize old + elemSize new)
-                                         (do new' <- allocateElemData new
-                                             removeSelf nodeRef
-                                             pure new'
-                                         )
-    | otherwise        = let patch :: Updated (Patch es ())
-                             patch = diffAttrs             nodeRef oldAts  newAts
-                                  <> diffEvents @handlerEs nodeRef oldEvts newEvts
-                             -- the Patch to update the
-                         in (new { elemData = nodeRef } <$)
-                            <$> patch
-                        -- combine the diffs/patches of the children and
-                        -- plug in the current node
-
--- | Compute the size of a elem
-elemSize    :: ElemData es msg a -> Int
-elemSize el = 1 + Map.size (elemAttributes el) + Map.size (elemEvents el)
+             => ElemData handlerEs msg NodeRef -> ElemData handlerEs msg new
+             -> Updated (Patch es)
+diffElemData old@(ElemData _ node oldAts oldEvts) new@(ElemData _ _ newAts newEvts) =
+     diffAttrs             node oldAts  newAts
+  <> diffEvents @handlerEs node oldEvts newEvts
+  -- combine the diffs/patches of the children and plug in the current node
 
 
+replace = undefined
+
+
+diffTree         :: forall a b old branch leaf es.
+                    ( CanPatch branch old es
+                    , CanPatch leaf   old es
+                    )
+                 => Tree (branch old) (leaf old) -> Tree (branch a) (leaf b)
+                 -> Updated (Patch es, Tree (branch old) (leaf old))
+diffTree oldTree = \case
+  newTree@(Leaf new)          -> case oldTree of
+    Leaf old          -> traceShow ("Diffing a leaf!") $ fmap Leaf <$> patch old new
+    Branch _ _        -> replace oldTree newTree
+  newTree@(Branch new newChs) -> case oldTree of
+    Leaf _            -> replace oldTree newTree
+    Branch old oldChs -> traceShow ("Diffing two branches!") $
+                         combineWith (\(patchNode, new')   -> (patchNode, Branch new' oldChs))
+                                     (\(patchChs, newChs') -> (patchChs, Branch old newChs'))
+                                     (\(patchNode, new') (patchChs, newChs') ->
+                                        (patchNode <> patchChs, Branch new' newChs')
+                                     )
+                                     (patch old new)
+                                     (mergeSeq diffTree oldChs newChs)
+
+-- | Merge the old and new sequence; zipping the results
+mergeSeq           :: (old -> new -> Updated (Patch es, old))
+                   -> Seq.Seq old -> Seq.Seq new -> Updated (Patch es, Seq.Seq old)
+mergeSeq f old new = let res  = Seq.zipWith (\oldE newE -> (oldE, f oldE newE)) old new
+                         new' = fmap (\(oldE,mNewE) -> case mNewE of
+                                         Unchanged         -> oldE
+                                         Changed (_,newE') -> newE'
+                                     ) res
+                     in (,new') <$> foldMap (fmap fst . snd) res
+
+-- replace :: Tree n l -> Tree n' l' -> Updated (Patch es)
+-- replace =
+
+
+
+-- diffTree (Leaf old) (Leaf new) = (Leaf new <$) <$> diffTextData old new
+-- diffTree (Leaf old) new        = Changed $ Patch (treeSize new)
+--                                                  (do let node = textData old
+--                                                      replace node new
+--                                                  )
+-- diffTree (Node old chs) new@(Leaf _) = Changed $ Patch 1 (do let node = elemData old
+--                                                              replace node new
+--                                                          )
+-- diffTree (Node old oldChs) newTree@(Node new newChs)
+--     | elemTag old /= elemTag new = Changed $ Patch (elemSize old + elemSize new)
+--                                                    (do let node = elemData old
+--                                                        replace node newTree
+--                                                    )
+--     | otherwise                  = case diffElemData old new of
+--         Unchanged     -> fmap (Node old) <$> diffChildren
+--         Updated patch -> case diffChildren of
+--                            Unchanged -> Updated patch
+
+--           fmap (Node (new { elemData = elemData old }))
+--                          <$>
+--   where
+--     diffChildren :: Updated (Patch _ (Seq.Seq (Tree _ _)))
+--     diffChildren = zipSeqWith diffTree oldChs newChs
+
+-- the types are note quite right yet
+
+
+-- replace node new = undefined
+                                                   -- replace
+
+                                                   --   new' <- allocateElemData new
+                                                   --   removeSelf nodeRef
+                                                   --   pure new'
+
+
+--                                  -- we need
+-- zipSeqWith :: Seq.Seq a -> Seq.Seq b -> Seq.Seq
+-- zipSeqWith = Seq.zipWith
+
+
+-- | Diff an html tree
+diffHtml :: forall handlerEs es msg new.
+                ( DOM                     :> es
+                , CanRunHandler handlerEs :> es
+                , Send msg                :> handlerEs
+                , DOM                     :> handlerEs
+                )
+             => Html handlerEs NodeRef msg -> Html handlerEs new msg
+             -> Updated (Patch es, Html handlerEs NodeRef msg)
+diffHtml (Html old) (Html new) = fmap Html <$> diffTree old new
 
 -- | Allocate an element
 allocateElemData :: DOM :> es => ElemData handlerEs msg a -> Eff es (ElemData handlerEs msg NodeRef)

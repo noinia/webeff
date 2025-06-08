@@ -90,6 +90,11 @@ removeSelf      :: (DOM :> es, IsNode node) => node  -> Eff es ()
 removeSelf node = unsafeEff_  $ js_removeSelf (asNode node)
 
 
+
+
+
+
+
 appendChild              :: (DOM :> es, IsNode parent, IsNode child)
                          => parent -> child  -> Eff es ()
 appendChild parent child = unsafeEff_  $ js_appendChild (asNode parent) (asNode child)
@@ -98,6 +103,11 @@ appendChild parent child = unsafeEff_  $ js_appendChild (asNode parent) (asNode 
 removeChild              :: (DOM :> es, IsNode parent, IsNode child)
                          => parent -> child  -> Eff es ()
 removeChild parent child = unsafeEff_  $ js_removeChild (asNode parent) (asNode child)
+
+
+
+
+
 
 --------------------------------------------------------------------------------
 -- * Attributes

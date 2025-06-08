@@ -1,5 +1,6 @@
 module WebEff.Updated
   ( Updated(..)
+  , combineWith
   ) where
 
 
@@ -13,6 +14,17 @@ instance Semigroup model => Monoid (Updated model) where
   mempty = Unchanged
 
 instance Semigroup model => Semigroup (Updated model) where
-  Unchanged     <> r           = r
-  (Changed l )  <> (Changed r) = Changed $ l <> r
-  l             <> Unchanged   = l
+  (<>) = combineWith id id (<>)
+
+combineWith             :: (a -> c) -> (b -> c) -> (a -> b -> c)
+                        -> Updated a -> Updated b -> Updated c
+combineWith f g combine = (<.>)
+  where
+    Unchanged     <.> r           = g <$> r
+    (Changed l )  <.> (Changed r) = Changed $ l `combine` r
+    l             <.> Unchanged   = f <$> l
+
+
+
+-- instance Applicative Update where
+--   pure =
