@@ -33,6 +33,10 @@ common warnings
       -- , dependent-sum            >= 0.7.2.0  && < 0.8
       , ghc-experimental         >= 0.1
 
+      , hspec                    >= 2.11.12  && < 2.12
+
+    build-tool-depends: hspec-discover:hspec-discover >= 2.11.12
+
     default-language: GHC2024
     default-extensions:
         DataKinds

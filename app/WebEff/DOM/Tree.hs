@@ -8,6 +8,17 @@ module WebEff.DOM.Tree
 
   , renderWith
   , diffHtml
+
+
+  , addToDOM
+
+  , allocateTextData
+  , allocateElemData
+
+  , Patch
+  , CanCombine
+  , CanPatch(..)
+  , spec
   ) where
 
 import           Control.Monad (void)
@@ -23,6 +34,7 @@ import           Data.Text (Text)
 import qualified Data.Text as Text
 import           Data.Traversable
 import           Effectful
+import           GHC.Show (showCommaSpace)
 import           WebEff.DOM.Attribute
 import           WebEff.DOM.FFI as FFI
 import           WebEff.DOM.FFI.Types (NodeRef, ElementName(..), AttributeName(..), IsNode(..), Event)
@@ -30,6 +42,15 @@ import           WebEff.Send
 import           WebEff.Updated
 
 import           Debug.Trace
+
+
+-- import Test.Hspec
+
+
+--------------------------------------------------------------------------------
+
+spec = testLeaf
+
 --------------------------------------------------------------------------------
 
 -- | Rose tree with nodes of type 'n' and leaves of type 'l'
@@ -113,6 +134,38 @@ instance DOM :> es => CanPatch TextData NodeRef es where
   -- replace (TextData _ nodeRef) (TextData new _) = error "not implemented yet"
 
 
+-- instance Show (Eff '[DOM] ()) where
+--   show _ = "Eff"
+instance Show NodeRef where
+  show _ = "NodeRef"
+
+testLeaf :: Spec
+testLeaf = describe "leaf tests" $ do
+             it "same" $
+               patch @_ @_ @'[DOM] (TextData "foo" (undefined :: NodeRef)) (TextData "foo" ())
+               `shouldSatisfy` (\case
+                                   Unchanged -> True
+                                   _         -> False
+                               )
+             it "different" $
+               patch @_ @_ @'[DOM] (TextData "foo" (undefined :: NodeRef)) (TextData "bar" ())
+               `shouldSatisfy` (\case
+                                   Changed (_, TextData "bar" _) -> True
+                                   _                             -> False
+                               )
+
+type Spec = IO ()
+describe s act = do print s
+                    act
+
+it = describe
+
+shouldSatisfy       :: a -> (a -> Bool) -> IO ()
+x `shouldSatisfy` f = print $ f x
+
+
+
+
 -- | The Attributes of a Node
 type Attributes = Map.Map AttributeName AttributeValue
 
@@ -135,6 +188,38 @@ instance Bifunctor (ElemData es) where
 -- instance Bitraversable ElemData where
 --   bitraverse f g (ElemData tag x ats evts) =
 --     (\x' evts' -> ElemData tag x' ats evts') <$> g x <*> traverse f evts
+
+
+instance Show n => Show (ElemData es msg n) where
+  showsPrec d (ElemData tag x ats evts)
+    = showParen (d >= 11)
+        ((.)
+          (showString "ElemData {")
+          ((.)
+            (showString "elemTag = ")
+                ((.)
+                   (showsPrec 0 tag)
+                   ((.)
+                      showCommaSpace
+                      ((.)
+                         (showString "elemData = ")
+                         ((.)
+                            (showsPrec 0 x)
+                            ((.)
+                               showCommaSpace
+                               ((.)
+                                  (showString "elemAttributes = ")
+                                  ((.)
+                                     (showsPrec 0 ats)
+                                     ((.)
+                                        showCommaSpace
+                                        ((.)
+                                           (showString "elemEvents = ")
+                                           ((.)
+                                              (showsPrec 0 $ "EventHandler" <$ evts)
+                                             (showString "}")))))))))))))
+
+
 
 
 -- | Diff two existing attributes
@@ -223,7 +308,7 @@ diffElemData old@(ElemData _ node oldAts oldEvts) new@(ElemData _ _ newAts newEv
   -- combine the diffs/patches of the children and plug in the current node
 
 
-replace = undefined
+replace = error "replace is called"
 
 
 diffTree         :: forall a b old branch leaf es.
@@ -238,8 +323,7 @@ diffTree oldTree = \case
     Branch _ _        -> replace oldTree newTree
   newTree@(Branch new newChs) -> case oldTree of
     Leaf _            -> replace oldTree newTree
-    Branch old oldChs -> traceShow ("Diffing two branches!") $
-                         combineWith (\(patchNode, new')   -> (patchNode, Branch new' oldChs))
+    Branch old oldChs -> combineWith (\(patchNode, new')   -> (patchNode, Branch new' oldChs))
                                      (\(patchChs, newChs') -> (patchChs, Branch old newChs'))
                                      (\(patchNode, new') (patchChs, newChs') ->
                                         (patchNode <> patchChs, Branch new' newChs')
@@ -328,6 +412,7 @@ allocateElemData (ElemData tag _ ats evts) =
 
 -- | Type representing Html trees each node storing an extra value of type a
 newtype Html handlerEs a msg = Html (Tree (ElemData handlerEs msg a) (TextData a))
+  deriving Show
 
 pattern TextNode t x = Html (Leaf (TextData t x))
 pattern Node tag x ats evts chs = Html (Branch (ElemData tag x ats evts) chs)

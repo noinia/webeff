@@ -15,6 +15,16 @@ import           WebEff.DOM
 import qualified WebEff.DOM.FFI.Types as FFI
 import           WebEff.Html
 
+
+-- import           Test.Hspec
+import           WebEff.DOM.Tree
+
+import           Data.Coerce
+import           Effectful.Concurrent
+import           Effectful.Concurrent.STM
+import           WebEff.DOM.FFI (jsBody, CanRunHandler, runCanRunHandler, appendChild)
+import           WebEff.Send
+
 --------------------------------------------------------------------------------
 
 foreign export javascript "hs_start"
@@ -38,7 +48,68 @@ foreign export javascript "hs_start"
 
 main :: IO ()
 -- main = runEff . runConcurrent . evalDOM $ runApp @'[DOM] myApp
-main = runEff . runConcurrent . evalDOM $ runApp @'[DOM] counterApp
+main = do
+  -- runEff . runConcurrent . evalDOM $ runApp @'[DOM] counterApp
+
+  runEff . runConcurrent . evalDOM $ do
+    queue <- atomically $ newTBQueue 10
+    body  <- jsBody
+
+    -- creates the initial view
+    theInitialView <- renderView (handlerSetup queue) body counterView 0
+
+    -- debugging
+    case diffHtml theInitialView (counterView 1) of
+      Unchanged -> consoleLog "Unchanged"
+      Changed (applyPatch,res) -> do consoleLog "Changed"
+                                     consoleLog $ Text.show res
+                                     runCanRunHandler (handlerSetup queue) applyPatch
+    consoleLog "DONE"
+
+
+    old@(TextData _ nodeRef) <- allocateTextData $ TextData "testText" ()
+    appendChild body nodeRef
+
+    case patch old (TextData "dummy" ()) of
+      Unchanged -> consoleLog "Unchanged"
+      Changed (applyPatch,res) -> do consoleLog "Text Changed"
+                                     consoleLog $ Text.show res
+                                     applyPatch
+
+    consoleLog "DONE"
+
+    runSendWith queue $ do
+      oldNode@(ElemData _ node _ _) <- allocateElemData $ myDiv
+                                       [(FFI.AttributeName "class", AttrValue ("foo" :: Text))]
+      appendChild body node
+
+
+      runCanRunHandler (handlerSetup queue) $
+        case patch @(ElemData (HandlerEs CounterMsg) _)
+                   oldNode (myDiv [(FFI.AttributeName "class", AttrValue ("bar" :: Text))]) of
+          Unchanged -> consoleLog "Unchanged"
+          Changed (applyPatch,res) -> do consoleLog "Node Changed"
+                                         consoleLog $ Text.show res
+                                         applyPatch
+
+      consoleLog "DONE"
+
+
+
+  where
+    renderView handlerSetup root render model =
+      runCanRunHandler handlerSetup $ renderWith root (render model)
+
+    handlerSetup       :: TBQueue CounterMsg -> Eff (HandlerEs CounterMsg) () -> IO ()
+    handlerSetup queue = runEff . evalDOM . runConcurrent . runSendWith queue
+
+    myDiv ats = ElemData (FFI.ElementName "div") () (Map.fromList ats) mempty
+
+
+type HandlerEs msg = [Send msg,Concurrent,DOM,IOE]
+
+
+    -- runEff . runConcurrent . evalDOM $ runApp @'[DOM] counterApp
 
 --------------------------------------------------------------------------------
 -- * FFI
@@ -113,6 +184,7 @@ counterApp = AppSpec
   }
 
 data CounterMsg = Increment | Decrement
+  deriving (Show)
 
 counterController   :: DOM :> es => Int -> CounterMsg -> Eff es (Updated Int)
 counterController m = \case
@@ -124,6 +196,6 @@ counterController m = \case
 counterView   :: Int -> View () CounterMsg
 counterView m = div []
                     [ button [onClick Increment] [textNode "+"]
-                    , button [onClick Decrement] [textNode "-"]
+                    -- , button [onClick Decrement] [textNode "-"]
                     , textNode (Text.show m)
                     ]

@@ -27,12 +27,14 @@ import qualified WebEff.DOM.FFI.Types as FFI
 --------------------------------------------------------------------------------
 
 -- | Constraints that we need ton the attribute values to marshall them.
-type AttrValueConstraints a = (HasSetAttributeValue a, Typeable a, Eq a)
+type AttrValueConstraints a = (HasSetAttributeValue a, Typeable a, Eq a, Show a)
 
 -- | An attribute value is either an actual value (of a type that can be marshalled and
 -- set in JS).
 data AttributeValue where
   AttrValue :: AttrValueConstraints value => value -> AttributeValue
+
+deriving instance Show AttributeValue
 
 instance Eq AttributeValue where
   (AttrValue (val :: a)) == (AttrValue (val' :: b)) = case eqT @a @b of

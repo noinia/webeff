@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
 module WebEff.App
   ( AppSpec(..)
   , Updated(..)
@@ -47,12 +48,16 @@ queueSize = 1024
 
 --------------------------------------------------------------------------------
 
+
+
 -- | Runs a WebEff app
 runApp          :: forall appEs es model msg.
                    ( Concurrent :> es
                    , DOM        :> es
                    , Subset appEs es
                    , DOM        :> appEs
+
+                   , Show msg
                    )
                 => AppSpec appEs model msg -> Eff es ()
 runApp AppSpec{ .. } = do queue <- atomically $ do q <- newTBQueue queueSize
@@ -74,16 +79,23 @@ runApp AppSpec{ .. } = do queue <- atomically $ do q <- newTBQueue queueSize
         process                          :: model -> View NodeRef msg
                                          -> Eff es ()
         process currentModel currentView = do
+            consoleLog (Text.pack "waiting for next msg")
             msg      <- atomically $ readTBQueue queue
+            consoleLog (Text.pack $ "received a msg" <> show msg)
             liftEff (controller currentModel msg) >>= \case
-              Unchanged        -> process currentModel currentView
+              Unchanged        ->
+                do
+                                  consoleLog "model unchanged"
+                                  process currentModel currentView
                                   -- model is unchanged, so therefore the view is
                                   -- unchanged as well
-              Changed newModel -> traceShow ("new model, diffing view") $
-                                  case diffHtml currentView (render newModel) of
-                Unchanged                     -> process newModel currentView
+              Changed newModel -> case diffHtml currentView (render newModel) of
+                Unchanged                     -> do consoleLog "view unchanged"
+                                                    process newModel currentView
                 Changed (applyPatch, newView) -> do consoleLog (Text.pack "view changed")
                                                     runCanRunHandler handlerSetup applyPatch
+                                                    consoleLog "done patching"
+                                                    consoleLog (Text.show newView)
                                                     process newModel newView
 
         -- diffHtml' currentView newView =

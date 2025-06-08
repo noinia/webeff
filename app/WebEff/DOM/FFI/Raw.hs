@@ -36,7 +36,7 @@ foreign import javascript unsafe "document.createElement($1)"
 
 --------------------------------------------------------------------------------
 
-foreign import javascript unsafe "str => {$1.textContent = str}"
+foreign import javascript unsafe "$1.textContent = $2"
   js_set_text_content :: Node -> JSString -> IO ()
 
 --------------------------------------------------------------------------------
