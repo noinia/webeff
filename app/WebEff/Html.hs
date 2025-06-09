@@ -43,8 +43,7 @@ module WebEff.Html
   , math
   , script
   , link
-  , style
-  , style
+  , style_
   , select
   , option
   , textarea
@@ -576,8 +575,8 @@ link = flip (el' "link") []
 -- You can also easily shoot yourself in the foot with something like:
 --
 -- @'style_' [] "\</style\>"@
-style               :: Default a => [Attribute es msg] -> Text -> Html es a msg
-style attrs rawText = el' "style" attrs [textNode rawText]
+style_               :: Default a => [Attribute es msg] -> Text -> Html es a msg
+style_ attrs rawText = el' "style" attrs [textNode rawText]
 
 -----------------------------------------------------------------------------
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script
