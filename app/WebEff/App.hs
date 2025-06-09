@@ -89,28 +89,11 @@ runApp AppSpec{ .. } = do queue <- atomically $ do q <- newTBQueue queueSize
             msg      <- atomically $ readTBQueue queue
             consoleLog $ Text.show msg
             -- consoleLog (Text.pack $ "received a msg" <> show msg)
-            -- liftEff (controller currentModel msg) >>= \case
-            x <- liftEff (do consoleLog "go"
-                             !res <- controller currentModel msg
-                             consoleLog "XXX"
-                             consoleLog $ Text.show msg
-                             consoleLog "go"
-                             consoleLog $ Text.show res
-                             consoleLog "xx"
-                             pure res
-                         )
-            consoleLog "handled?"
-            consoleLog $ "handled " <> Text.show x
-            case x of
-              Unchanged        ->
-                do
-                                  consoleLog "model unchanged"
-                                  process currentModel currentView
+            liftEff (controller currentModel msg) >>= \case
+              Unchanged        -> process currentModel currentView
                                   -- model is unchanged, so therefore the view is
                                   -- unchanged as well
-              Changed newModel -> do
-                consoleLog "changed"
-                case diffHtml currentView (render newModel) of
+              Changed newModel -> case diffHtml currentView (render newModel) of
                   Unchanged                     -> do consoleLog "view unchanged"
                                                       process newModel currentView
                   Changed (applyPatch, newView) -> do consoleLog (Text.pack "view changed")
@@ -118,9 +101,6 @@ runApp AppSpec{ .. } = do queue <- atomically $ do q <- newTBQueue queueSize
                                                       consoleLog "done patching"
                                                       consoleLog (Text.show newView)
                                                       process newModel newView
-
-        -- diffHtml' currentView newView =
-        --    $ diffHtml currentView newView
 
         liftEff :: Eff appEs a -> Eff es a
         liftEff = inject -- for whatever reason ghc doesn't  like it if we inline this.

@@ -41,7 +41,7 @@ import           WebEff.DOM.FFI.Types (NodeRef, ElementName(..), AttributeName(.
 import           WebEff.Send
 import           WebEff.Updated
 
-import           Debug.Trace
+-- import           Debug.Trace
 
 
 -- import Test.Hspec
@@ -323,7 +323,7 @@ diffTree         :: forall a b old branch leaf es.
                  -> Updated (Patch es, Tree (branch old) (leaf old))
 diffTree oldTree = \case
   newTree@(Leaf new)          -> case oldTree of
-    Leaf old          -> traceShow ("Diffing a leaf!") $ fmap Leaf <$> patch old new
+    Leaf old          -> fmap Leaf <$> patch old new
     Branch _ _        -> replace oldTree newTree
   newTree@(Branch new newChs) -> case oldTree of
     Leaf _            -> replace oldTree newTree

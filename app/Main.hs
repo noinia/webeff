@@ -49,7 +49,6 @@ foreign export javascript "hs_start"
 main :: IO ()
 -- main = runEff . runConcurrent . evalDOM $ runApp @'[DOM] myApp
 main = do
-  print "woei"
   runEff . runConcurrent . evalDOM $ runApp @'[DOM] counterApp
 {-
   runEff . runConcurrent . evalDOM $ do
