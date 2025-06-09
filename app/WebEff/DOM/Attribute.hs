@@ -1,10 +1,10 @@
 module WebEff.DOM.Attribute
   ( Attribute(..)
   , AttributeValue(..)
-  , (=:)
-  , (-:)
-  , AttributeName
-  , EventName
+  -- , (=:)
+  -- , (-:)
+  , AttributeName(..)
+  , EventName(..)
 
   , AttrValueConstraints
 
@@ -64,16 +64,16 @@ data Attribute es msg = EventAttr EventName (EventHandler es msg)
                       | Attr      AttributeName AttributeValue
                       deriving (Functor)
 
--- | Shorthand for assigning attribute values
-(=:)            :: AttrValueConstraints value
-                => AttributeName -> value -> Attribute es msg
-attrName =: val = Attr attrName (AttrValue val)
+-- -- | Shorthand for assigning attribute values
+-- (=:)            :: AttrValueConstraints value
+--                 => AttributeName -> value -> Attribute es msg
+-- attrName =: val = Attr attrName (AttrValue val)
 
 -- -- | Shorthand for creating an Event
 -- (-:) :: EventName -> msg -> Attribute msg
 -- evtName -: msg = EventAttr evtName msg
 
-(-:) = ($)
+-- (-:) = ($)
 
 
 --------------------------------------------------------------------------------

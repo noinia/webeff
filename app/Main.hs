@@ -4,8 +4,8 @@ module Main where
 import qualified Data.Map as Map
 import           Data.Monoid
 import qualified Data.Sequence as Seq
-import qualified Data.Text as Text
 import           Data.Text (Text)
+import qualified Data.Text as Text
 import           Effectful
 import           Effectful.Concurrent
 import           Prelude hiding (div)
@@ -13,8 +13,8 @@ import           WebEff.App
 import           WebEff.Attribute
 import           WebEff.DOM
 import qualified WebEff.DOM.FFI.Types as FFI
-import           WebEff.Html hiding (main)
-
+import           WebEff.Html as H hiding (main)
+import           WebEff.Html.Attribute as A
 
 -- import           Test.Hspec
 import           WebEff.DOM.Tree
@@ -47,9 +47,9 @@ foreign export javascript "hs_start"
 
 
 main :: IO ()
--- main = runEff . runConcurrent . evalDOM $ runApp @'[DOM] myApp
-main = do
-  runEff . runConcurrent . evalDOM $ runApp @'[DOM] counterApp
+main = runEff . runConcurrent . evalDOM $ runApp @'[DOM] myApp
+-- main = do
+--   runEff . runConcurrent . evalDOM $ runApp @'[DOM] counterApp
 {-
   runEff . runConcurrent . evalDOM $ do
     queue <- atomically $ newTBQueue 10
@@ -125,6 +125,7 @@ type HandlerEs msg = [Send msg,Concurrent,DOM,IOE]
 --------------------------------------------------------------------------------
 data MyModel = MyModel { myMessage :: Text.Text
                        , position  :: Maybe (Int,Int)
+                       , numClicks :: Int
                        }
 
 
@@ -139,23 +140,26 @@ myApp = AppSpec
   { render         = myView
   , controller     = myUpdate
   , initialMessage = Just SayHello
-  , initialModel   = MyModel "Initial" Nothing
+  , initialModel   = MyModel "Initial" Nothing 0
   }
 
 myView m = div []
-               [ h1  [ "class" =: classes ["header", "someclass"]
-                     , onClick -:  SayHello
-                     , "id"    =: ("theHeader" :: Text)
+               [ h1  [ classes ["header", "someclass"]
+                     , onClick SayHello
+                     , A.id    "theHeader"
                      ]
                      [ textNode "header!"
                      ]
-               , div [] [p [ onClick        -: SetMsg "woei"
-                           , "x-foo"        =: ("bar" :: Text)
-                           , "Style"        =: ("border: 1px solid black; width: 200px; height: 100px;" :: Text)
-                           , onPointerOver -: \pointerEvent -> UpdatePosition (client pointerEvent)
+               , div [] [p [ onClick      $  SetMsg "woei"
+                           , data_ "foo"     "bar"
+                           , styleInline "border: 1px solid black; width: 200px; height: 100px;"
+                           , onPointerMove $ \pointerEvent -> UpdatePosition (client pointerEvent)
                            ]
-                           [ textNode $ myMessage m
+                           [ textNode $ "message: " <> myMessage m
+                           , textNode $ "position: " <> Text.show (position m)
                            ]
+                        , div [ classes ["foo","bar"] ]
+                              (foldMap (\i -> [textNode $ Text.show i]) [1..(numClicks m)])
                         ]
                ]
 
@@ -169,8 +173,11 @@ myUpdate   :: DOM :> es => MyModel -> MyMsg -> Eff es (Updated MyModel)
 myUpdate m = \case
   SayHello           -> Unchanged <$ consoleLog (myMessage m)
   Skip               -> pure Unchanged
-  SetMsg t           -> pure $ Changed (m { myMessage = t})
-  UpdatePosition pos -> Unchanged <$ consoleLog (Text.show pos)
+  SetMsg t           -> pure $ Changed (m { myMessage = t
+                                          , numClicks = 1 + numClicks m
+                                          }
+                                       )
+  UpdatePosition pos -> Changed (m { position = Just pos }) <$ consoleLog (Text.show pos)
 
 
 
@@ -198,6 +205,6 @@ counterController m = \case
 counterView   :: Int -> View () CounterMsg
 counterView m = div []
                     [ button [onClick Increment] [textNode "+"]
-                    -- , button [onClick Decrement] [textNode "-"]
+                    , button [onClick Decrement] [textNode "-"]
                     , textNode (Text.show m)
                     ]

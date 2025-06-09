@@ -59,11 +59,7 @@ runApp          :: forall appEs es model msg.
                    , DOM        :> es
                    , Subset appEs es
                    , DOM        :> appEs
-
-
-                   -- , IOE :> es
-                   -- , IOE :> appEs
-                   , Show msg, Show model
+                   -- , Show msg, Show model
                    )
                 => AppSpec appEs model msg -> Eff es ()
 runApp AppSpec{ .. } = do queue <- atomically $ do q <- newTBQueue queueSize
@@ -87,8 +83,6 @@ runApp AppSpec{ .. } = do queue <- atomically $ do q <- newTBQueue queueSize
         process currentModel currentView = do
             consoleLog "waiting for next msg"
             msg      <- atomically $ readTBQueue queue
-            consoleLog $ Text.show msg
-            -- consoleLog (Text.pack $ "received a msg" <> show msg)
             liftEff (controller currentModel msg) >>= \case
               Unchanged        -> process currentModel currentView
                                   -- model is unchanged, so therefore the view is

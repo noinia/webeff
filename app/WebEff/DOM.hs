@@ -11,8 +11,6 @@ module WebEff.DOM
 
   , AttrValueConstraints
   , HasSetAttributeValue(..)
-  , (=:)
-
 
   , consoleLog
 

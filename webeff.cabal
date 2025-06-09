@@ -83,9 +83,15 @@ executable webeff
 
         WebEff.DOM.Tree
         WebEff.Html
+        WebEff.Html.Attribute
+         -- internal
 
         WebEff.Send
         WebEff.Updated
+
+        -- internal
+        WebEff.Html.Attribute.Types
+
 
     -- other-extensions:
     build-depends:
