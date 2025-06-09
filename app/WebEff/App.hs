@@ -57,7 +57,7 @@ runApp          :: forall appEs es model msg.
                    , Subset appEs es
                    , DOM        :> appEs
 
-                   , Show msg
+                   , Show msg, Show model
                    )
                 => AppSpec appEs model msg -> Eff es ()
 runApp AppSpec{ .. } = do queue <- atomically $ do q <- newTBQueue queueSize
@@ -82,21 +82,33 @@ runApp AppSpec{ .. } = do queue <- atomically $ do q <- newTBQueue queueSize
             consoleLog (Text.pack "waiting for next msg")
             msg      <- atomically $ readTBQueue queue
             consoleLog (Text.pack $ "received a msg" <> show msg)
-            liftEff (controller currentModel msg) >>= \case
+            -- liftEff (controller currentModel msg) >>= \case
+            x <- liftEff (do consoleLog "go"
+                             !res <- controller currentModel msg
+                             consoleLog "ret1"
+                             consoleLog "ret2"
+                             consoleLog $ "ret3" <> Text.show res
+                             pure res
+                         )
+            consoleLog "handled?"
+            consoleLog $ "handled " <> Text.show x
+            case x of
               Unchanged        ->
                 do
                                   consoleLog "model unchanged"
                                   process currentModel currentView
                                   -- model is unchanged, so therefore the view is
                                   -- unchanged as well
-              Changed newModel -> case diffHtml currentView (render newModel) of
-                Unchanged                     -> do consoleLog "view unchanged"
-                                                    process newModel currentView
-                Changed (applyPatch, newView) -> do consoleLog (Text.pack "view changed")
-                                                    runCanRunHandler handlerSetup applyPatch
-                                                    consoleLog "done patching"
-                                                    consoleLog (Text.show newView)
-                                                    process newModel newView
+              Changed newModel -> do
+                consoleLog "changed"
+                case diffHtml currentView (render newModel) of
+                  Unchanged                     -> do consoleLog "view unchanged"
+                                                      process newModel currentView
+                  Changed (applyPatch, newView) -> do consoleLog (Text.pack "view changed")
+                                                      runCanRunHandler handlerSetup applyPatch
+                                                      consoleLog "done patching"
+                                                      consoleLog (Text.show newView)
+                                                      process newModel newView
 
         -- diffHtml' currentView newView =
         --    $ diffHtml currentView newView

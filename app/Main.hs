@@ -49,8 +49,8 @@ foreign export javascript "hs_start"
 main :: IO ()
 -- main = runEff . runConcurrent . evalDOM $ runApp @'[DOM] myApp
 main = do
-  -- runEff . runConcurrent . evalDOM $ runApp @'[DOM] counterApp
-
+  runEff . runConcurrent . evalDOM $ runApp @'[DOM] counterApp
+{-
   runEff . runConcurrent . evalDOM $ do
     queue <- atomically $ newTBQueue 10
     body  <- jsBody
@@ -58,41 +58,43 @@ main = do
     -- creates the initial view
     theInitialView <- renderView (handlerSetup queue) body counterView 0
 
-    -- debugging
-    case diffHtml theInitialView (counterView 1) of
-      Unchanged -> consoleLog "Unchanged"
-      Changed (applyPatch,res) -> do consoleLog "Changed"
-                                     consoleLog $ Text.show res
-                                     runCanRunHandler (handlerSetup queue) applyPatch
-    consoleLog "DONE"
+        -- -- debugging
+    -- case diffHtml theInitialView (counterView 1) of
+    --   Unchanged -> consoleLog "Unchanged"
+    --   Changed (applyPatch,res) -> do consoleLog "Changed"
+    --                                  consoleLog $ Text.show res
+    --                                  runCanRunHandler (handlerSetup queue) applyPatch
+    -- consoleLog "DONE"
 
 
-    old@(TextData _ nodeRef) <- allocateTextData $ TextData "testText" ()
-    appendChild body nodeRef
+    -- old@(TextData _ nodeRef) <- allocateTextData $ TextData "testText" ()
+    -- appendChild body nodeRef
 
-    case patch old (TextData "dummy" ()) of
-      Unchanged -> consoleLog "Unchanged"
-      Changed (applyPatch,res) -> do consoleLog "Text Changed"
-                                     consoleLog $ Text.show res
-                                     applyPatch
+    -- case patch old (TextData "dummy" ()) of
+    --   Unchanged -> consoleLog "Unchanged"
+    --   Changed (applyPatch,res) -> do consoleLog "Text Changed"
+    --                                  consoleLog $ Text.show res
+    --                                  applyPatch
 
-    consoleLog "DONE"
+    -- consoleLog "DONE"
 
-    runSendWith queue $ do
-      oldNode@(ElemData _ node _ _) <- allocateElemData $ myDiv
-                                       [(FFI.AttributeName "class", AttrValue ("foo" :: Text))]
-      appendChild body node
+    -- oldNode@(ElemData _ node _ _) <- allocateElemData $ myDiv
+    --                                  [(FFI.AttributeName "class", AttrValue ("foo" :: Text))]
+    -- appendChild body node
 
 
-      runCanRunHandler (handlerSetup queue) $
-        case patch @(ElemData (HandlerEs CounterMsg) _)
-                   oldNode (myDiv [(FFI.AttributeName "class", AttrValue ("bar" :: Text))]) of
-          Unchanged -> consoleLog "Unchanged"
-          Changed (applyPatch,res) -> do consoleLog "Node Changed"
-                                         consoleLog $ Text.show res
-                                         applyPatch
+    -- case patch @(ElemData (HandlerEs CounterMsg) CounterMsg)
+    --              oldNode (myDiv [(FFI.AttributeName "class", AttrValue ("bar" :: Text))]) of
+    --     Unchanged -> consoleLog "Unchanged"
+    --     Changed (applyPatch,res) -> do consoleLog "Node Changed"
+    --                                    consoleLog $ Text.show res
+    --                                    runCanRunHandler (handlerSetup queue) $ applyPatch
 
-      consoleLog "DONE"
+    -- consoleLog "DONE"
+
+
+
+
 
 
 
@@ -110,9 +112,9 @@ type HandlerEs msg = [Send msg,Concurrent,DOM,IOE]
 
 
     -- runEff . runConcurrent . evalDOM $ runApp @'[DOM] counterApp
+-}
 
 --------------------------------------------------------------------------------
--- * FFI
 
 
 
