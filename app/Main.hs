@@ -13,7 +13,7 @@ import           WebEff.App
 import           WebEff.Attribute
 import           WebEff.DOM
 import qualified WebEff.DOM.FFI.Types as FFI
-import           WebEff.Html
+import           WebEff.Html hiding (main)
 
 
 -- import           Test.Hspec
@@ -49,6 +49,7 @@ foreign export javascript "hs_start"
 main :: IO ()
 -- main = runEff . runConcurrent . evalDOM $ runApp @'[DOM] myApp
 main = do
+  print "woei"
   runEff . runConcurrent . evalDOM $ runApp @'[DOM] counterApp
 {-
   runEff . runConcurrent . evalDOM $ do
