@@ -79,7 +79,10 @@ foreign import javascript unsafe "$1.removeAttribute($2)"
 
 --------------------------------------------------------------------------------
 
-foreign import javascript "wrapper sync"
+-- note; we use an asynchronous event handler. I think this may prevent us from handling
+-- some type of oevents. But otherwise this seems to yield weird issues
+
+foreign import javascript "wrapper"
   js_mkEventHandler :: (JSVal -> IO ()) -> IO JsEventListener
 
 foreign import javascript unsafe "$1.addEventListener($2,$3)"

@@ -110,6 +110,15 @@ runApp AppSpec{ .. } = do queue <- atomically $ do q <- newTBQueue queueSize
 
 type HandlerEs msg = [Send msg,Concurrent,DOM,IOE]
 
+{-
+If we use a 'wrapper sync' with the eventHandlers then it seems that :
+
+1) It looks like there is only one WASM thread.
+
+2) Once some JS event happens, this wasm tread does some work, and then stops again.
+
+-}
+
 
 
 renderView                                :: forall es root msg a model.
