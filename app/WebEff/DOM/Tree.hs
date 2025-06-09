@@ -45,6 +45,7 @@ import           Debug.Trace
 
 
 -- import Test.Hspec
+import           Effectful.Dispatch.Static
 
 
 --------------------------------------------------------------------------------
@@ -277,7 +278,10 @@ diffEvents node oldEvts = fold . Map.merge removeOldAttrs setNewAttrs diffExisti
 
     addNewEvent evtName createMessage = void $
       addEventListener @handlerEs node evtName $ \event -> do msg <- createMessage event
+                                                              unsafeEff_ $ print "sending!"
                                                               sendMessage msg
+                                                              unsafeEff_ $ print "done sending!"
+
     removeEventListeners _ _ _ = consoleLog "removing event listeners not yet implemented"
 
 

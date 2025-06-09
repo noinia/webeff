@@ -20,6 +20,8 @@ import           WebEff.DOM.Tree (diffHtml)
 import           WebEff.Send
 import           WebEff.Updated
 
+
+import Control.Monad.IO.Class
 import qualified Data.Text as Text
 import Debug.Trace
 --------------------------------------------------------------------------------
@@ -48,7 +50,8 @@ queueSize = 1024
 
 --------------------------------------------------------------------------------
 
-
+-- print' :: (IOE :> es, Show a) => a -> Eff es ()
+-- print' = liftIO . print
 
 -- | Runs a WebEff app
 runApp          :: forall appEs es model msg.
@@ -57,6 +60,9 @@ runApp          :: forall appEs es model msg.
                    , Subset appEs es
                    , DOM        :> appEs
 
+
+                   -- , IOE :> es
+                   -- , IOE :> appEs
                    , Show msg, Show model
                    )
                 => AppSpec appEs model msg -> Eff es ()
@@ -79,15 +85,18 @@ runApp AppSpec{ .. } = do queue <- atomically $ do q <- newTBQueue queueSize
         process                          :: model -> View NodeRef msg
                                          -> Eff es ()
         process currentModel currentView = do
-            consoleLog (Text.pack "waiting for next msg")
+            consoleLog "waiting for next msg"
             msg      <- atomically $ readTBQueue queue
-            consoleLog (Text.pack $ "received a msg" <> show msg)
+            consoleLog $ Text.show msg
+            -- consoleLog (Text.pack $ "received a msg" <> show msg)
             -- liftEff (controller currentModel msg) >>= \case
             x <- liftEff (do consoleLog "go"
                              !res <- controller currentModel msg
-                             consoleLog "ret1"
-                             consoleLog "ret2"
-                             consoleLog $ "ret3" <> Text.show res
+                             consoleLog "XXX"
+                             consoleLog $ Text.show msg
+                             consoleLog "go"
+                             consoleLog $ Text.show res
+                             consoleLog "xx"
                              pure res
                          )
             consoleLog "handled?"
