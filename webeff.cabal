@@ -70,28 +70,7 @@ executable webeff
     main-is:          Main.hs
     ghc-options: -no-hs-main -optl-mexec-model=reactor -optl-Wl,--export=hs_start
     other-modules:
-        WebEff.App
-
-        WebEff.Attribute
-        WebEff.DOM
-        WebEff.DOM.Attribute
-        WebEff.DOM.FFI
-        WebEff.DOM.FFI.Types
-
-        WebEff.DOM.FFI.Classes
-        WebEff.DOM.FFI.Raw
-
-        WebEff.DOM.Tree
-        WebEff.Html
-        WebEff.Html.Attribute
-         -- internal
-
-        WebEff.Send
-        WebEff.Updated
-
-        -- internal
-        WebEff.Html.Attribute.Types
-
+        -- WebEff.App
 
     -- other-extensions:
     build-depends:
