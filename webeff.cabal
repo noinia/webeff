@@ -32,6 +32,7 @@ common warnings
       -- , constraints-extras       >= 0.4.0.2  && < 0.5
       -- , dependent-sum            >= 0.7.2.0  && < 0.8
       , ghc-experimental         >= 0.1
+      , lens                     >= 5.3      && < 6
 
       , hspec                    >= 2.11.12  && < 2.12
 
@@ -57,6 +58,7 @@ common warnings
       , PartialTypeSignatures
       , QuantifiedConstraints
       , DefaultSignatures
+      , ImportQualifiedPost
 
 library
     import:           warnings
@@ -70,7 +72,10 @@ executable webeff
     main-is:          Main.hs
     ghc-options: -no-hs-main -optl-mexec-model=reactor -optl-Wl,--export=hs_start
     other-modules:
-        -- WebEff.App
+        WebEff.FFI
+        WebEff.FFI.Types
+
+        WebEff.Runtime
 
     -- other-extensions:
     build-depends:
