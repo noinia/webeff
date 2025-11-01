@@ -5,10 +5,14 @@ module WebEff.Reactive
 
 
   , Signal
-  , createSignal
+  , withSignal
   , getSignal
   , setSignal
   , modifySignal
+
+
+  , createSignal, deleteSignal
+
 
   , RegisteredEffect
   , createEffect
@@ -22,7 +26,8 @@ module WebEff.Reactive
   , Proxy
   ) where
 
-import Data.Kind(Type)
+import Effectful.Exception (bracket)
+import Data.Kind (Type)
 import Data.Proxy
 import Data.Foldable
 import Data.Maybe (fromMaybe)
@@ -42,6 +47,19 @@ import WebEff.Runtime
 
 --------------------------------------------------------------------------------
 
+-- | Run some computation with a signal.
+--
+-- FIXME: this does not really work as expected yet, as the finalizer runs too early.
+withSignal        :: forall ls t es a r. (HasRuntime ls t :> es, Typeable a)
+                  => Ctx ls t
+                  -> a
+                  -- ^ the initial value for the signal
+                  -> (Signal t a -> Eff es r)
+                  -- ^ The computation to run
+                  -> Eff es r
+withSignal ctx x0 = bracket (createSignal ctx x0) (deleteSignal ctx)
+
+
 -- | Create a new Signal
 createSignal      :: forall ls t es a. (HasRuntime ls t :> es, Typeable a)
                   => Ctx ls t -> a -> Eff es (Signal t a)
@@ -52,6 +70,15 @@ createSignal _ x0 = state $ \(runtime :: Runtime ls t) ->
                                , runtime&nextSignalId %~ succ
                                         &rawSignals   %~ IntMap.insert i sData
                                )
+
+-- | Delete a signal. Note that this does not trigger any effects
+deleteSignal          :: forall ls t es a. HasRuntime ls t :> es
+                      => Ctx ls t -> Signal t a -> Eff es ()
+deleteSignal _ signal = modify $ \(runtime :: Runtime ls t) ->
+                                   runtime&rawSignals.at (coerce signal) .~ Nothing
+
+
+
 
 -- | Access the signal value
 getSignal          :: forall ls t es a. (HasRuntime ls t :> es

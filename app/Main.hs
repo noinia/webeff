@@ -76,6 +76,9 @@ main = do
                                     )
                  => Ctx ls t -> Eff es ()
       myMain ctx = do
+        -- withSignal ctx 0 $ \counter ->
+        -- withSignal does not really work yet; as it should somwhow wait indefinitely
+
         counter <- createSignal ctx 0
 
         let handler     :: JSVal -> Eff (HasRuntime ls t : ls) ()
