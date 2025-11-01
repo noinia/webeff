@@ -69,36 +69,31 @@ main = do
   js_appendChild plusButton plusText
 
   let
-      myMain         :: forall t es ls. (ls ~ '[ IOE
-                                               ]
-                                        , IOE :> es
-                                        -- , es ~ '[IOE]
-                                        )
-                     => Runtime ls t -> Eff es ()
-      myMain runtime = evalState runtime $ do
-        counter <- createSignal @ls @t 0
-
-        -- v <- getSignal @ls counter
-        -- liftIO $ print (show v)
-
+      myMain     :: forall t es ls. (ls ~ '[ IOE
+                                           ]
+                                    , IOE :> es
+                                    , HasRuntime ls t :> es
+                                    )
+                 => Ctx ls t -> Eff es ()
+      myMain ctx = do
+        counter <- createSignal ctx 0
 
         let handler     :: JSVal -> Eff (HasRuntime ls t : ls) ()
             handler evt = do
-                -- fixme; this somehow gives the empty runtime rather than the current one
                 consoleLog "- clicked"
-                v <- modifySignal @ls counter pred
+                v <- modifySignal ctx counter pred
                 setTextContent textValue (Text.show v)
 
             myMinEffect :: Eff (HasRuntime ls t : ls) ()
             myMinEffect = void $ addEventListener minButton (EventName "click") handler
 
-        void $ createEffect @ls @t myMinEffect
+        void $ createEffect ctx myMinEffect
 
-        void $ createEffect @ls @t $ do
+        void $ createEffect ctx $ do
               void $ addEventListener plusButton (EventName "click") $ \evt -> do
                 consoleLog "+ clicked"
                 setTextContent textValue "+ clicked"
-                v <- modifySignal @ls counter succ
+                v <- modifySignal ctx counter succ
                 setTextContent textValue (Text.show v)
 
         liftIO $ print "boe"
@@ -109,21 +104,34 @@ main = do
   putStrLn "woei"
 
 
-addEventListener                              :: forall ls target t.
+--------------------------------------------------------------------------------
+
+
+addEventListener :: forall ls target t.
+                    ( IsEventTarget target
+                    , ls ~ '[IOE]
+                    )
+                 => target -> EventName
+                 -> (JSVal -> Eff (HasRuntime ls t : ls) ())
+                 -> Eff (HasRuntime ls t : ls) JsEventListener
+addEventListener = addEventListenerWith runEff
+
+-- | Runs an event handler
+addEventListenerWith                              :: forall ls target t.
                                                  ( IsEventTarget target
-                                                 , ls ~ '[IOE]
+                                                 , IOE :> ls
                                                  )
-                                              => target -> EventName
+                                              => (Eff ls () -> IO ())
+                                              -> target -> EventName
                                               -> (JSVal -> Eff (HasRuntime ls t : ls) ())
                                               -> Eff (HasRuntime ls t : ls) JsEventListener
-addEventListener target (EventName e) handler = do
+addEventListenerWith embed target (EventName e) handler = do
   runtimeRef <- getStateMVar
   let run :: Eff (HasRuntime ls t : ls) () -> IO ()
-      run = runEff . evalStateMVar runtimeRef
+      run = embed . evalStateMVar runtimeRef
   liftIO $ js_addEventListener (asEventTarget target)
                                (textToJSString e)
                                (run . handler)
-
 
 
 setTextContent        :: (IsNode textNode, IOE :> ls) => textNode -> Text -> Eff ls ()

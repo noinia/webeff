@@ -1,4 +1,3 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
 module WebEff.Reactive
   ( Runtime
   , withRuntime
@@ -44,9 +43,9 @@ import WebEff.Runtime
 --------------------------------------------------------------------------------
 
 -- | Create a new Signal
-createSignal    :: forall ls t es a.
-                   (HasRuntime ls t :> es, Typeable a) => a -> Eff es (Signal t a)
-createSignal x0 = state $ \(runtime :: Runtime ls t) ->
+createSignal      :: forall ls t es a. (HasRuntime ls t :> es, Typeable a)
+                  => Ctx ls t -> a -> Eff es (Signal t a)
+createSignal _ x0 = state $ \(runtime :: Runtime ls t) ->
                             let i     = runtime^.nextSignalId
                                 sData = SignalData (Dynamic.toDyn x0) Set.empty
                             in ( Signal i :: Signal t a
@@ -55,10 +54,10 @@ createSignal x0 = state $ \(runtime :: Runtime ls t) ->
                                )
 
 -- | Access the signal value
-getSignal        :: forall ls t es a. (HasRuntime ls t :> es
-                                      , Typeable a
-                                      ) => Signal t a -> Eff es a
-getSignal signal = state $ \(runtime :: Runtime ls t) ->
+getSignal          :: forall ls t es a. (HasRuntime ls t :> es
+                                        , Typeable a
+                                        ) => Ctx ls t -> Signal t a -> Eff es a
+getSignal _ signal = state $ \(runtime :: Runtime ls t) ->
     runtime&signalAt' signal %%~ getAndSubscribe (runtime^.currentEffect)
   where
     -- | Get the current value of the signal, furthermore register the currently running
@@ -77,12 +76,12 @@ getSignal signal = state $ \(runtime :: Runtime ls t) ->
 
 -- | Set the signal to a given value. (Possibly registering the
 -- current event as a subscriber). This
-setSignal          :: forall ls t es a. ( HasRuntime ls t :> es
-                                        , Subset ls es
-                                        , Typeable a
-                                        )
-                   => Signal t a -> a -> Eff es ()
-setSignal signal x = do
+setSignal            :: forall ls t es a. ( HasRuntime ls t :> es
+                                          , Subset ls es
+                                          , Typeable a
+                                          )
+                     => Ctx ls t -> Signal t a -> a -> Eff es ()
+setSignal _ signal x = do
       -- set the value, and get the current subscribers
       subs <- state $ \(runtime :: Runtime ls t) ->
                         runtime&signalAt' signal %%~ \sigData ->
@@ -95,21 +94,22 @@ setSignal signal x = do
 
 -- | Access and update the signal value. Returns the new value. This
 -- triggers re-running the effects that subscribe to this signal
-modifySignal          :: forall ls t es a. ( HasRuntime ls t :> es
-                                           , Subset ls es
-                                           , Typeable a
-                                           )
-                      => Signal t a
-                      -> (a -> a)
-                       -- ^ update function
-                      -> Eff es a
-modifySignal signal f = do
+modifySignal              :: forall ls t es a. ( HasRuntime ls t :> es
+                                               , Subset ls es
+                                               , Typeable a
+                                               )
+                          => Ctx ls t
+                          -> Signal t a
+                          -> (a -> a)
+                           -- ^ update function
+                          -> Eff es a
+modifySignal ctx signal f = do
     (signalData, current) <- state $ \(runtime :: Runtime ls t) ->
                                        runtime&signalAt' signal %%~ \sigData ->
                                            let sigData' = sigData&theValue %~ f
                                            in ((sigData',runtime^.currentEffect),sigData')
     traverse_ rerun (signalData^.subscribers.to Set.elems)
-    subscribeCurrentEffectTo @ls @t signal current
+    subscribeCurrentEffectTo ctx signal current
     pure $ signalData^.theValue
   where
     rerun       :: RegisteredEffect t -> Eff es ()
@@ -117,9 +117,10 @@ modifySignal signal f = do
                      runEffect effIx eff
 
 -- | if we have a current effect, add it as a subscriber
-subscribeCurrentEffectTo        :: forall ls t es a. (HasRuntime ls t :> es)
-                                => Signal t a -> Maybe (RegisteredEffect t) -> Eff es ()
-subscribeCurrentEffectTo signal = \case
+subscribeCurrentEffectTo          :: forall ls t es a. (HasRuntime ls t :> es)
+                                  => Ctx ls t
+                                  -> Signal t a -> Maybe (RegisteredEffect t) -> Eff es ()
+subscribeCurrentEffectTo _ signal = \case
   Nothing  -> pure ()
   Just eff -> modify $ \(runtime :: Runtime ls t) ->
                          runtime&singular (signalAtDyn signal).subscribers %~ Set.insert eff
@@ -151,12 +152,13 @@ withLocalState initialize recombine act = do old  <- state initialize
 
 
 -- | Create a new registered effect and run it.
-createEffect     :: ( HasRuntime ls t :> es
-                    , Subset ls es
-                    )
-                 => Eff (HasRuntime ls t : ls) ()
-                 -> Eff es (RegisteredEffect t)
-createEffect eff = do
+createEffect         :: ( HasRuntime ls t :> es
+                        , Subset ls es
+                        )
+                     => Ctx ls t
+                     -> Eff (HasRuntime ls t : ls) ()
+                     -> Eff es (RegisteredEffect t)
+createEffect ctx eff = do
     effIx <- registerEffect eff
     runEffect effIx eff
     pure effIx

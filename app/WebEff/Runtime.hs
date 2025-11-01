@@ -8,7 +8,7 @@ module WebEff.Runtime
 
   , HasRuntime
 
-  , withRuntime
+  , withRuntime, withRuntime'
   , createRuntime
 
 
@@ -24,6 +24,7 @@ module WebEff.Runtime
 
 
   , Proxy
+  , Ctx(..)
   ) where
 
 import Data.Kind(Type)
@@ -70,7 +71,6 @@ data Runtime ls t = Runtime { _rawSignals    :: IntMap (SignalData t Dynamic.Dyn
                             , _nextSignalId  :: {-# UNPACK#-}!Int
                             , _rawEffects    :: IntMap (Eff (State (Runtime ls t) : ls) ())
                             , _nextEffectId  :: {-# UNPACK#-}!Int
-                            , _runner        :: forall a. Eff ls a -> IO a
                             , _currentEffect :: Maybe (RegisteredEffect t)
                             }
 
@@ -117,14 +117,19 @@ effectAt effIx = rawEffects.ix (coerce effIx)
 -- createRuntime run = Runtime IntMap.empty 0 IntMap.empty 0 run Nothing
 
 createRuntime :: forall ls t. Runtime ls t
-createRuntime = Runtime IntMap.empty 0 IntMap.empty 0 run Nothing
-  where run = undefined
-  -- FIXME: the run stuff is useless  (but we don't use it at the moment anyway)
-
+createRuntime = Runtime IntMap.empty 0 IntMap.empty 0 Nothing
 
 -- | Create a new new runtime, and run a computation with it.
-withRuntime   :: forall ls r. (forall (t :: Type). Runtime ls t -> r) -> r
-withRuntime f = f @() $ createRuntime @ls @()
+withRuntime   :: forall ls a.
+                 (forall (t :: Type).
+                   Ctx ls t -> Eff (HasRuntime ls t : ls) a
+                 ) -> Eff ls a
+withRuntime f = withRuntime' $ \(runtime :: Runtime ls t) ->
+                                 evalState runtime $ f (Ctx @ls @t)
+
+withRuntime'   :: forall ls r. (forall (t :: Type). Runtime ls t -> r) -> r
+withRuntime' f = f @() $ createRuntime @ls @()
+
 
 -- withRuntime     :: forall ls es a.
 --                    (forall (t :: Type). Runtime ls t ->
@@ -140,3 +145,6 @@ withRuntime f = f @() $ createRuntime @ls @()
 --   undefined
 
 --------------------------------------------------------------------------------
+
+-- | Context
+data Ctx (ls :: [Effect]) (t :: Type) = Ctx
