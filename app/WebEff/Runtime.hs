@@ -2,21 +2,32 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 module WebEff.Runtime
   ( Runtime
+  , currentEffect
+  , nextSignalId, rawSignals, signalAtDyn, signalAt, signalAt'
+  , nextEffectId, rawEffects, effectAt
+
+  , withRuntime
   , createRuntime
 
 
-  , Signal
-  , createSignal
-  , getSignal
-  , setSignal
-  , modifySignal
+  , SignalData(SignalData), theValue, subscribers
+  , signalValue
 
-  , RegisteredEffect
-  , createEffect
-  , runEffect
-  , registerEffect
+  , Signal(..)
+
+  , RegisteredEffect(..)
+
+  -- , createEffect'
+  -- , runEffect'
+
+
+  , Proxy
   ) where
 
+import Data.Kind(Type)
+import Data.Proxy
+import Data.Foldable
+import Data.Maybe (fromMaybe)
 import Data.Bifunctor
 import Data.Coerce
 import Control.Lens
@@ -26,7 +37,9 @@ import Data.IntMap qualified as IntMap
 import Data.Dynamic qualified as Dynamic
 import Data.Dynamic (Typeable)
 import Effectful
-import Effectful.State.Dynamic
+import Effectful.State.Static.Shared
+import Data.Dynamic.Lens qualified as LensDynamic
+import Data.Dynamic.Lens (_Dynamic)
 --------------------------------------------------------------------------------
 
 
@@ -38,15 +51,22 @@ newtype RegisteredEffect t = RegisteredEffect Int
                            deriving (Show,Eq,Ord,Enum)
 
 
-data SignalData t = SignalData { _theValue    :: Dynamic.Dynamic
-                               , _subscribers :: Set.EnumSet (RegisteredEffect t)
-                               }
+data SignalData t a = SignalData { _theValue    :: a
+                                 , _subscribers :: Set.EnumSet (RegisteredEffect t)
+                                 }
+                    deriving (Functor,Foldable,Traversable)
 
 makeLenses ''SignalData
 
-data Runtime t ls = Runtime { _rawSignals    :: IntMap (SignalData t)
+-- | Access the value in the signalData
+signalValue :: Typeable a => Traversal' (SignalData t Dynamic.Dynamic) a
+signalValue = theValue._Dynamic
+
+--------------------------------------------------------------------------------
+
+data Runtime ls t = Runtime { _rawSignals    :: IntMap (SignalData t Dynamic.Dynamic)
                             , _nextSignalId  :: {-# UNPACK#-}!Int
-                            , _rawEffects    :: IntMap (Eff ls ())
+                            , _rawEffects    :: IntMap (Eff (State (Runtime ls t) : ls) ())
                             , _nextEffectId  :: {-# UNPACK#-}!Int
                             , _runner        :: forall a. Eff ls a -> IO a
                             , _currentEffect :: Maybe (RegisteredEffect t)
@@ -54,142 +74,64 @@ data Runtime t ls = Runtime { _rawSignals    :: IntMap (SignalData t)
 
 makeLenses ''Runtime
 
+--------------------------------------------------------------------------------
+
+
+-- | Access the signal value at the given signal
+signalAt        :: forall ls t a. Typeable a
+                => Signal t a -> Traversal' (Runtime ls t) (SignalData t a)
+signalAt signal = signalAtDyn signal . wrap
+  where
+    wrap   :: (Applicative f, Typeable a)
+           => (SignalData t a -> f (SignalData t a))
+           -> SignalData t Dynamic.Dynamic -> f (SignalData t Dynamic.Dynamic)
+    wrap f = fmap (fmap Dynamic.toDyn) . f . fmap fromDynamic'
+
+    fromDynamic' :: Dynamic.Dynamic -> a
+    fromDynamic' = fromMaybe (error "signalAt. wrong type?") . Dynamic.fromDynamic
+
+-- | Access the signalData for a given signal. This gives accessto the Signal Data
+-- as a Dynamic.
+signalAtDyn        :: Signal t a -> Traversal' (Runtime ls t) (SignalData t Dynamic.Dynamic)
+signalAtDyn signal = rawSignals.at (coerce signal)._Just
+
+-- | Access the signalData at a given signal
+signalAt'        :: Typeable a => Signal t a -> Lens' (Runtime ls t) (SignalData t a)
+signalAt' signal = singular (signalAt signal)
+
+-- Applicative f => a -> f b -> s -> f t
+
+effectAt       :: RegisteredEffect t
+               -> Traversal' (Runtime ls t) (Eff (State (Runtime ls t) : ls) ())
+effectAt effIx = rawEffects.ix (coerce effIx)
+
+--------------------------------------------------------------------------------
+
 -- | Create a new runtime
-createRuntime     :: (forall a. Eff ls a -> IO a) -> Runtime t ls
-createRuntime run = Runtime IntMap.empty 0 IntMap.empty 0 run Nothing
+-- createRuntime     :: forall ls t. (forall a. Eff ls a -> IO a) -> Runtime ls t
+-- createRuntime run = Runtime IntMap.empty 0 IntMap.empty 0 run Nothing
+
+createRuntime :: forall ls t. Runtime ls t
+createRuntime = Runtime IntMap.empty 0 IntMap.empty 0 run Nothing
+  where run = undefined
+  -- FIXME: the run stuff is useless  (but we don't use it at the moment anyway)
 
 
---------------------------------------------------------------------------------
+-- | Create a new new runtime, and run a computation with it.
+withRuntime   :: forall ls r. (forall (t :: Type). Runtime ls t -> r) -> r
+withRuntime f = f @() $ createRuntime @ls @()
 
--- | Create a new Signal
-createSignal    :: forall t ls es a.
-                   (State (Runtime t ls) :> es, Typeable a) => a -> Eff es (Signal t a)
-createSignal x0 = state $ \(runtime :: Runtime t ls) ->
-                            let i     = runtime^.nextSignalId
-                                sData = SignalData (Dynamic.toDyn x0) Set.empty
-                            in ( Signal i :: Signal t a
-                               , runtime&nextSignalId %~ succ
-                                        &rawSignals   %~ IntMap.insert i sData
-                               )
+-- withRuntime     :: forall ls es a.
+--                    (forall (t :: Type). Runtime ls t ->
 
+--                     Eff (State (Runtime ls t) : es) a)
+--                 -> Eff es a
+-- withRuntime act = let initialRuntime :: Runtime ls (Proxy ())
+--                       initialRuntime = createRuntime @ls
+--                   in evalState initialRuntime (act @(Proxy ()))
 
--- | Access the signal value
-getSignal        :: forall t ls es a. (State (Runtime t ls) :> es
-                                      , Typeable a
-                                      ) => Signal t a -> Eff es a
-getSignal signal = state $ \(runtime :: Runtime t ls) ->
-    runtime&rawSignals.at (coerce signal) %%~ \case
-      Nothing         -> error "getSignal. Absurd, signal not found !?"
-      Just signalData -> Just <$> getAndSubscribe (runtime^.currentEffect) signalData
-  where
-    -- | Get the current value of the signal, furthermore register the currently running
-    -- effect (if such an effect exists) as a subscriber of the signal.
-    --
-    -- returns the value, as well as the updated signal data (which
-    -- contains the updated) subscribers.
-    getAndSubscribe                    :: Maybe (RegisteredEffect t)
-                                       -> SignalData t
-                                       -> (a, SignalData t)
-    getAndSubscribe current signalData =
-      case Dynamic.fromDynamic (signalData^.theValue) of
-        Nothing -> error $ "getSignal: absurd. wrong type at" <> show signal
-        Just x  -> ( x
-                   , case current of
-                       Nothing  -> signalData
-                       Just eff -> signalData&subscribers %~ Set.insert eff
-                   )
-
--- | Set the signal to a given value. (Possibly registering the
--- current event as a subscriber). This
-setSignal          :: forall t ls es a. ( State (Runtime t ls) :> es
-                                        , Typeable a
-                                        )
-                   => Signal t a -> a -> Eff es a
-setSignal signal x = modifySignal @t @ls (const x) signal
-
-
--- | Access and update the signal value. Returns the new value. This
--- triggers re-running the effects that subscribe to this signal
-modifySignal          :: forall t ls es a. (State (Runtime t ls) :> es
-                                         , Typeable a
-                                         )
-                      => (a -> a)
-                       -- ^ update function
-                      -> Signal t a -> Eff es a
-modifySignal f signal = state $ \(runtime :: Runtime t ls) ->
-    runtime&rawSignals.at (coerce signal) %%~ \case
-      Nothing         -> error "modifySignal. Absurd, signal not found !?"
-      Just signalData -> Just <$> getAndSubscribe (runtime^.currentEffect) signalData
-  where
-    -- | Get the current value of the signal, furthermore register the currently running
-    -- effect (if such an effect exists) as a subscriber of the signal.
-    --
-    -- returns the value, as well as the updated signal data (which
-    -- contains the updated) subscribers.
-    getAndSubscribe                    :: Maybe (RegisteredEffect t)
-                                       -> SignalData t
-                                       -> (a, SignalData t)
-    getAndSubscribe current signalData =
-      case f <$> Dynamic.fromDynamic (signalData^.theValue) of
-        Nothing -> error $ "modifySignal: absurd. wrong type at" <> show signal
-        Just x  -> ( x
-                   , signalData&theValue    .~ Dynamic.toDyn x
-                               &subscribers %~ maybe id Set.insert current
-                   )
-
--- TODO: we still need to notify the actual subscribers when we set the value.
+-- withRuntime   :: (forall t. Runtime ls t -> Eff es a) -> eff es a
+-- withRuntime f =
+--   undefined
 
 --------------------------------------------------------------------------------
-
--- | Run some effectful computation using a local state.
-withLocalState       :: (State s :> es)
-                     => (s -> s)
-                     -- ^ function to re-initialize the state
-                     -> (s -> s -> s)
-                     -- ^ function that recombines the previous state and the newer
-                     -- state (i.e. after running the action) into a final state
-                     -> Eff es a
-                     -- ^ The effect to run with the local state
-                     -> Eff es a
-withLocalState initialize recombine act = do prevState <- state $ \s -> (s, initialize s)
-                                             x         <- act
-                                             modify $ recombine prevState
-                                             pure x
-
--- | Create a new registered effect and run it.
-createEffect     :: ( State (Runtime t ls) :> es
-                    , Subset ls es
-                    )
-                 => Eff ls ()
-                 -> Eff es (RegisteredEffect t)
-createEffect eff = do
-    effIx <- registerEffect eff
-    runEffect effIx eff
-    pure effIx
-
--- | Runs the local effect
-runEffect           :: forall t ls es.
-                       ( State (Runtime t ls) :> es
-                       , Subset ls es
-                       )
-                    => RegisteredEffect t
-                    -> Eff ls ()
-                    -> Eff es ()
-runEffect effIx eff = withLocalState (&currentEffect ?~ effIx)
-                                     recombine  -- we restore only the currentEffect
-                                     (inject eff)
-  where
-    recombine                    :: Runtime t ls -> Runtime t ls -> Runtime t ls
-    recombine prevState newState = newState&currentEffect .~ (prevState^.currentEffect)
-
--- | Create/register a new registered effect.
-registerEffect   :: forall t ls es.
-                    (State (Runtime t ls) :> es)
-                 => Eff ls ()
-                 -> Eff es (RegisteredEffect t)
-registerEffect f = state $ \(runtime :: Runtime t ls) ->
-                             let i = runtime^.nextEffectId
-                             in ( RegisteredEffect i :: RegisteredEffect t
-                                , runtime&nextEffectId %~ succ
-                                         &rawEffects   %~ IntMap.insert i f
-                                )

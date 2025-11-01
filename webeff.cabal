@@ -76,6 +76,7 @@ executable webeff
         WebEff.FFI
         WebEff.FFI.Types
 
+        WebEff.Reactive
         WebEff.Runtime
 
     -- other-extensions:
