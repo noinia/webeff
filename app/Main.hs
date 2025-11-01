@@ -2,6 +2,7 @@
 {-# LANGUAGE AllowAmbiguousTypes  #-}
 module Main where
 
+
 import Control.Monad
 import WebEff.Reactive
 import WebEff.FFI
@@ -11,7 +12,7 @@ import Data.IntMap (IntMap)
 import Data.IntMap qualified as IntMap
 import Data.Dynamic qualified as Dynamic
 import Effectful
-import Effectful.State.Static.Shared
+import WebEff.SharedState
 import Control.Lens
 import WebEff.Runtime
 import Data.Text (Text)
@@ -81,14 +82,14 @@ main = do
         -- liftIO $ print (show v)
 
 
-        let handler     :: JSVal -> Eff (State (Runtime ls t) : ls) ()
+        let handler     :: JSVal -> Eff (HasRuntime ls t : ls) ()
             handler evt = do
                 -- fixme; this somehow gives the empty runtime rather than the current one
                 consoleLog "- clicked"
                 v <- modifySignal @ls counter pred
                 setTextContent textValue (Text.show v)
 
-            myMinEffect :: Eff (State (Runtime ls t) : ls) ()
+            myMinEffect :: Eff (HasRuntime ls t : ls) ()
             myMinEffect = void $ addEventListener minButton (EventName "click") handler
 
         void $ createEffect @ls @t myMinEffect
@@ -113,13 +114,12 @@ addEventListener                              :: forall ls target t.
                                                  , ls ~ '[IOE]
                                                  )
                                               => target -> EventName
-                                              -> (JSVal -> Eff (State (Runtime ls t) : ls) ())
-                                              -> Eff (State (Runtime ls t) : ls) JsEventListener
+                                              -> (JSVal -> Eff (HasRuntime ls t : ls) ())
+                                              -> Eff (HasRuntime ls t : ls) JsEventListener
 addEventListener target (EventName e) handler = do
-  runtimeRef <- get
-  -- State runtimeRef <- getStaticRep
-  let run :: Eff (State (Runtime ls t) : ls) () -> IO ()
-      run = runEff . evalState runtimeRef
+  runtimeRef <- getStateMVar
+  let run :: Eff (HasRuntime ls t : ls) () -> IO ()
+      run = runEff . evalStateMVar runtimeRef
   liftIO $ js_addEventListener (asEventTarget target)
                                (textToJSString e)
                                (run . handler)

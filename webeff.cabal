@@ -27,6 +27,7 @@ common warnings
       , enummapset               >= 0.7      && < 0.8
       , data-default             >= 0.8      && < 1
       , indexed-traversable      >= 0.1.2.1  && < 0.2
+      , strict-mutable-base      >= 1.1.0.0  && < 1.2
       -- , dependent-map            >= 0.4      && < 0.5
       -- , dependent-sum-template   >= 0.2.0.2  && < 0.3
       -- , some                     >= 1.0.6    && < 1.1
@@ -78,6 +79,9 @@ executable webeff
 
         WebEff.Reactive
         WebEff.Runtime
+
+
+        WebEff.SharedState
 
     -- other-extensions:
     build-depends:

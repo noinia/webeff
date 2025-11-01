@@ -6,6 +6,8 @@ module WebEff.Runtime
   , nextSignalId, rawSignals, signalAtDyn, signalAt, signalAt'
   , nextEffectId, rawEffects, effectAt
 
+  , HasRuntime
+
   , withRuntime
   , createRuntime
 
@@ -37,11 +39,11 @@ import Data.IntMap qualified as IntMap
 import Data.Dynamic qualified as Dynamic
 import Data.Dynamic (Typeable)
 import Effectful
-import Effectful.State.Static.Shared
 import Data.Dynamic.Lens qualified as LensDynamic
 import Data.Dynamic.Lens (_Dynamic)
---------------------------------------------------------------------------------
+import WebEff.SharedState
 
+--------------------------------------------------------------------------------
 
 
 newtype Signal t a = Signal Int
@@ -73,6 +75,9 @@ data Runtime ls t = Runtime { _rawSignals    :: IntMap (SignalData t Dynamic.Dyn
                             }
 
 makeLenses ''Runtime
+
+
+type HasRuntime ls t = State (Runtime ls t)
 
 --------------------------------------------------------------------------------
 
