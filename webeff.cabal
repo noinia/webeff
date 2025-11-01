@@ -83,8 +83,6 @@ executable webeff
         WebEff.Runtime
 
 
-        WebEff.SharedState
-
     -- other-extensions:
     build-depends:
         webeff
