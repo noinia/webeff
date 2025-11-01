@@ -42,7 +42,7 @@ import Data.Dynamic (Typeable)
 import Effectful
 import Data.Dynamic.Lens qualified as LensDynamic
 import Data.Dynamic.Lens (_Dynamic)
-import WebEff.SharedState
+import Effectful.State.Static.Shared
 
 --------------------------------------------------------------------------------
 

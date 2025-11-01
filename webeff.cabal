@@ -76,6 +76,8 @@ executable webeff
     other-modules:
         WebEff.FFI
         WebEff.FFI.Types
+        WebEff.FFI.Classes
+        WebEff.DOM
 
         WebEff.Reactive
         WebEff.Runtime

@@ -40,7 +40,7 @@ import Data.IntMap qualified as IntMap
 import Data.Dynamic qualified as Dynamic
 import Data.Dynamic (Typeable)
 import Effectful
-import WebEff.SharedState
+import Effectful.State.Static.Shared
 import Data.Dynamic.Lens qualified as LensDynamic
 import Data.Dynamic.Lens (_Dynamic)
 import WebEff.Runtime
@@ -48,8 +48,6 @@ import WebEff.Runtime
 --------------------------------------------------------------------------------
 
 -- | Run some computation with a signal.
---
--- FIXME: this does not really work as expected yet, as the finalizer runs too early.
 withSignal        :: forall ls t es a r. (HasRuntime ls t :> es, Typeable a)
                   => Ctx ls t
                   -> a
@@ -57,7 +55,13 @@ withSignal        :: forall ls t es a r. (HasRuntime ls t :> es, Typeable a)
                   -> (Signal t a -> Eff es r)
                   -- ^ The computation to run
                   -> Eff es r
-withSignal ctx x0 = bracket (createSignal ctx x0) (deleteSignal ctx)
+withSignal ctx x0 = bracket (createSignal ctx x0)
+                            (const $ pure ())
+                            -- (deleteSignal ctx)
+
+-- FIXME: we currently don't actually delete the signa. If we do use
+-- deleteSignal this does not really work as expected yet, as the
+-- finalizer runs too early.
 
 
 -- | Create a new Signal
@@ -177,6 +181,8 @@ withLocalState initialize recombine act = do old  <- state initialize
                                              modify $ recombine old
                                              pure x
 
+
+--------------------------------------------------------------------------------
 
 -- | Create a new registered effect and run it.
 createEffect         :: ( HasRuntime ls t :> es
