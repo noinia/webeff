@@ -76,6 +76,9 @@ instance IsNode Node where
 instance IsNode Body where
   asNode = coerce
 
+instance IsNode Head where
+  asNode = coerce
+
 --------------------------------------------------------------------------------
 -- * Document
 
@@ -87,6 +90,9 @@ newtype Window = Window JSVal
 
 -- | A reference to the body of the html page
 newtype Body = Body JSVal
+
+-- | A reference to the head of the html page
+newtype Head = Head JSVal
 
 --------------------------------------------------------------------------------
 -- * Attributes
@@ -107,3 +113,10 @@ newtype AttributeName = AttributeName Text
 newtype PropertyName = PropertyName Text
   deriving stock (Show,Eq,Ord)
   deriving newtype (IsString)
+
+
+--------------------------------------------------------------------------------
+
+newtype URL = URL Text
+  deriving stock (Show,Eq)
+  deriving newtype IsString

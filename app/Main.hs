@@ -52,17 +52,20 @@ foreign export javascript "hs_start"
 
 --------------------------------------------------------------------------------
 
+type View t = Html (Varying t)
+
 data Html f = TextNode (f Text)
             | Element  ElementName (f (Map.Map AttributeName (f Text   )))
                                    (f (Seq.Seq               (f (Html f))))
+            -- todo; it's abit weird that attributes are text
 
 
 deriving instance Show1 f => Show (Html f)
 deriving instance Eq1 f   => Eq   (Html f)
 
 -- | Map the f's to g's
-mapF      :: forall f g. Functor f => (forall a. f a -> g a) -> Html f -> Html g
-mapF ftog = go
+bmap      :: forall f g. Functor f => (forall a. f a -> g a) -> Html f -> Html g
+bmap ftog = go
   where
     go = \case
       TextNode text       -> TextNode (ftog text)
@@ -74,37 +77,46 @@ mapF ftog = go
     applyChs :: Seq.Seq (f (Html f)) -> Seq.Seq (g (Html g))
     applyChs = fmap (ftog . fmap go)
 
-{-
+
 -- I t hink this needs h to be a monad, moreover we need to pick whether to
 -- traverse top down or bottom up
 
 -- | Map the f's to g's
-traverseF      :: forall f g. (Functor f, Applicative h)
+traverseF      :: forall f g h. (Functor f, Monad h)
                => (forall a. f a -> h (g a)) -> Html f -> h (Html g)
-traverseF ftog = go
-  where
-    go = \case
-      TextNode text       -> TextNode <$> ftog text
-      Element tag ats chs -> Element tag <$> (ftog $ applyAts <$> ats)
-                                         <*> (ftog $ applyChs <$> chs)
+traverseF ftog = undefined
+  -- go
+  -- where
+  --   go = \case
+  --     TextNode text       -> TextNode <$> ftog text
+  --     Element tag ats chs -> Element tag <$> (flatten $ applyAts <$> ats)
+  --                                        <*> (flatten $ applyChs <$> chs)
 
-    flatten :: f (h (Map k v)) -> h ..
-    flatten = ftog
+  --   flatten :: f (h a) -> h (g a)
+  --   flatten = join . sequenceA . ftog
+  --                -- h (g (h a))
 
-    applyAts :: Map.Map AttributeName (f Text) -> h (Map.Map AttributeName (g Text))
-    applyAts = traverse ftog
+  --   applyAts :: Map.Map AttributeName (f Text) -> h (Map.Map AttributeName (g Text))
+  --   applyAts = traverse ftog
 
-    applyChs :: Seq.Seq (f (Html f)) -> Seq.Seq (g (Html g))
-    applyChs = fmap (ftog . fmap go)
--}
+  --   applyChs :: Seq.Seq (f (Html f)) -> h (Seq.Seq (g (Html g)))
+  --   applyChs = traverse (flatten . traverse go)
 
 
+-- | Constructs a text node
 textNode_ :: Applicative f => Text -> Html f
 textNode_ = TextNode . pure
 
--- Constructs an element with fixed children (but each child itself may be varying)
+-- | Constructs an element with fixed children (but each child itself
+-- is properly wrapped in an f)
 el_             :: forall f. Applicative f
-                => ElementName -> [f (AttributeName, f Text)] -> [f (Html f)]
+                => ElementName
+                -- ^ The element we are constructing
+                -> [f (AttributeName, f Text)]
+                -- ^ The Attributes. The outer f may be used to adapt
+                -- each individual attribute.
+                -> [f (Html f)]
+                -- ^ Children
                 -> Html f
 el_ tag ats chs = Element tag res (pure $ Seq.fromList chs)
   where
@@ -115,16 +127,29 @@ el_ tag ats chs = Element tag res (pure $ Seq.fromList chs)
 
 myHtml :: Html Identity
 myHtml = div_ []
-              [ pure $ button_ [] [pure $ textNode_ "-"]
+              [ pure $ button_ [ pure (id_ $ pure "minButton") ]
+                               [ pure $ textNode_ "-" ]
               , pure $ textNode_ "woei"
               , pure $ button_ [] [pure $ textNode_ "+"]
               ]
 
+-- classes_     :: (Functor f, Foldable list) => f (list Text) -> (AttributeName, f Text)
+-- classes_ cls =
+
+class_   :: f Text -> (AttributeName, f Text)
+class_ v = (AttributeName "class", v)
+
+id_     :: f Text  -> (AttributeName, f Text)
+id_ v   = (AttributeName "id", v)
+
+
+
 div_    = el_ (ElementName "div")
+
 button_ = el_ (ElementName "button")
 
 
-
+-- construct :: Html Identity -> Eff es ()
 
 
 --------------------------------------------------------------------------------
@@ -134,6 +159,9 @@ asChildOf               :: (IsNode parent, IsNode child, DOM :> es)
 asChildOf parent create = do new <- create
                              appendChild parent new
                              pure new
+
+flowByte :: URL
+flowByte = URL "https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.css"
 
 main :: IO ()
 main = runEff . evalDOM $ withRuntime myMain
@@ -145,6 +173,8 @@ main = runEff . evalDOM $ withRuntime myMain
                                   )
                => Ctx ls t -> Eff es ()
     myMain ctx = do
+      -- void $ appendStyleSheet flowByte
+
 
       body <- jsBody
 

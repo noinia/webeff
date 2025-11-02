@@ -15,6 +15,9 @@ foreign import javascript unsafe "return document"
 foreign import javascript unsafe "return document.body"
   js_body :: IO Body
 
+foreign import javascript unsafe "return document.head"
+  js_head :: IO Head
+
 foreign import javascript unsafe "return window"
   js_window :: IO Window
 
@@ -132,3 +135,8 @@ foreign import javascript unsafe "return $1[$2]"
 
 foreign import javascript unsafe "return $1[$2]"
   js_getProperty_String :: JSVal -> JSString -> IO JSString
+
+
+foreign import javascript unsafe "$1[$2] = $3"
+  js_setProperty_String :: JSVal -> JSString -> JSString -> IO ()
+-- second arg is the name of the property

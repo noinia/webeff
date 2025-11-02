@@ -1,9 +1,10 @@
+{-# LANGUAGE OverloadedStrings #-}
 module WebEff.DOM
   ( DOM, evalDOM
 
   , jsDocument
   , jsBody
-  , jsBody
+  , jsHead
   , getParent
   , consoleLog
 
@@ -24,6 +25,9 @@ module WebEff.DOM
 
 
   , getProperty
+  , setProperty
+
+  , appendStyleSheet
   ) where
 
 import           Data.Coerce
@@ -55,6 +59,9 @@ evalDOM = evalStaticRep (MkDOM ())
 
 jsDocument :: DOM :> es => Eff es Document
 jsDocument = unsafeEff_ js_document
+
+jsHead :: DOM :> es => Eff es Head
+jsHead = unsafeEff_ js_head
 
 jsBody :: DOM :> es => Eff es Body
 jsBody = unsafeEff_ js_body
@@ -181,12 +188,32 @@ removeEventListener target
 getProperty :: ( DOM :> es
                , HasGetPropertyValue value
                , Coercible object JSVal
-               ) => PropertyName -> object -> Eff es value
-getProperty (PropertyName prop) obj = unsafeEff_ $
+               ) => object -> PropertyName -> Eff es value
+getProperty obj (PropertyName prop) = unsafeEff_ $
                                       js_getProperty (coerce obj) (textToJSString prop)
 
+-- | Set a property
+setProperty :: ( DOM :> es
+               -- , HasGetPropertyValue value
+               , Coercible object JSVal
+               ) => object -> PropertyName -> Text -> Eff es ()
+setProperty obj (PropertyName prop) val = unsafeEff_ $
+    js_setProperty_String (coerce obj) (textToJSString prop) (textToJSString val)
 
 
+
+--------------------------------------------------------------------------------
+
+
+-- | Appends a stylesheet to thead of the page
+appendStyleSheet     :: (DOM :> es) => URL -> Eff es Node
+appendStyleSheet url = do hd   <- jsHead
+                          link <- createElement (ElementName "link")
+                          setProperty link (PropertyName "type") "text/css"
+                          setProperty link (PropertyName "rel")  "stylesheet"
+                          setProperty link (PropertyName "href") (coerce url)
+                          appendChild hd link
+                          pure link
 
 --------------------------------------------------------------------------------
 {- -- the old event handler setup
