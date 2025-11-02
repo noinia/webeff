@@ -1,9 +1,12 @@
+{-# LANGUAGE UndecidableInstances #-}
 module WebEff.Signal.Derived
   ( DerivedSignal(..)
   ) where
 
 import WebEff.Reactive
 import Data.Typeable
+import Effectful
+import WebEff.Runtime (HasRuntime)
 
 --------------------------------------------------------------------------------
 
@@ -14,5 +17,5 @@ data DerivedSignal t b where
 instance Functor (DerivedSignal t) where
   fmap f (Derive signal g) = Derive signal (f . g)
 
-instance HasCurrent DerivedSignal a where
+instance (HasRuntime ls t :> es) => HasCurrent ls t es DerivedSignal a where
   current ctx (Derive signal f) = f <$> getSignal ctx signal

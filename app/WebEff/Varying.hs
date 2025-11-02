@@ -1,3 +1,4 @@
+{-# LANGUAGE UndecidableInstances #-}
 module WebEff.Varying
   ( Varying
   , varying
@@ -8,6 +9,7 @@ import Data.IntMap qualified as IntMap
 import Data.IntSet qualified as IntSet
 import Effectful
 import WebEff.Reactive
+import WebEff.Runtime (HasRuntime)
 import Data.Dynamic qualified as Dynamic
 import Data.Typeable
 import Data.Coerce
@@ -54,7 +56,7 @@ instance Applicative (Varying t) where
       signals        = fSignals `IntSet.union` xSignals
       f signalValues = ff signalValues (fx signalValues)
 
-instance HasCurrent Varying a where
+instance (HasRuntime ls t :> es) => HasCurrent ls t es Varying a where
   current ctx (Varying signals f) = f <$> sequence signalValues
     where
       signalValues = IntMap.fromSet (untypedGetSignalDyn ctx) signals

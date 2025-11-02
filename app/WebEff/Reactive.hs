@@ -22,12 +22,14 @@ module WebEff.Reactive
 
 
   , untypedGetSignalDyn
+
+  , Constant(..)
   ) where
 
 
 import Control.Monad (void)
 import Effectful.Exception (bracket)
-import Data.Kind (Type)
+import Data.Kind (Type, Constraint)
 import Data.Proxy
 import Data.Foldable
 import Data.Maybe (fromMaybe)
@@ -264,9 +266,17 @@ registerEffect f = state $ \(runtime :: Runtime ls t) ->
 --------------------------------------------------------------------------------
 
 -- | Class for signal like things for which we can get the current value.
-class HasCurrent signal a where
+class HasCurrent ls t es signal a where
   -- | Access the current value of a signal (or a derived signal, or varying).
-  current :: (HasRuntime ls t :> es) => Ctx ls t -> signal t a -> Eff es a
+  current :: Ctx ls t -> signal t a -> Eff es a
 
-instance Typeable a => HasCurrent Signal a where
+instance (Typeable a, HasRuntime ls t :> es) => HasCurrent ls t es Signal a where
   current = getSignal
+
+
+newtype Constant t a = Constant { getConstant :: a }
+  deriving stock (Show,Eq,Ord,Functor,Foldable,Traversable)
+  deriving (Applicative, Monad) via Identity
+
+instance HasCurrent ls t es Constant a where
+  current _ (Constant x) = pure x

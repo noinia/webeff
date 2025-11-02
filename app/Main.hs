@@ -52,29 +52,32 @@ foreign export javascript "hs_start"
 
 --------------------------------------------------------------------------------
 
-type View t = Html (Varying t)
+type View t node = Html (Varying t) node
 
-data Html f = TextNode (f Text)
-            | Element  ElementName (f (Map.Map AttributeName (f Text   )))
-                                   (f (Seq.Seq               (f (Html f))))
+data Html f node = TextNode node (f Text)
+                 | Element  ElementName node (f (Map.Map AttributeName (f Text         )))
+                                             (f (Seq.Seq               (f (Html f node))))
             -- todo; it's abit weird that attributes are text
+  deriving stock (Functor, Foldable, Traversable)
 
 
-deriving instance Show1 f => Show (Html f)
-deriving instance Eq1 f   => Eq   (Html f)
+deriving instance (Show1 f, Show node) => Show (Html f node)
+deriving instance (Eq1 f, Eq node)     => Eq   (Html f node)
+
+
 
 -- | Map the f's to g's
-bmap      :: forall f g. Functor f => (forall a. f a -> g a) -> Html f -> Html g
+bmap      :: forall f g node. Functor f => (forall a. f a -> g a) -> Html f node -> Html g node
 bmap ftog = go
   where
     go = \case
-      TextNode text       -> TextNode (ftog text)
-      Element tag ats chs -> Element tag (ftog $ applyAts <$> ats) (ftog $ applyChs <$> chs)
+      TextNode n text       -> TextNode n (ftog text)
+      Element tag n ats chs -> Element tag n (ftog $ applyAts <$> ats) (ftog $ applyChs <$> chs)
 
     applyAts :: Map.Map AttributeName (f Text) -> Map.Map AttributeName (g Text)
     applyAts = fmap ftog
 
-    applyChs :: Seq.Seq (f (Html f)) -> Seq.Seq (g (Html g))
+    applyChs :: Seq.Seq (f (Html f node)) -> Seq.Seq (g (Html g node))
     applyChs = fmap (ftog . fmap go)
 
 
@@ -82,8 +85,8 @@ bmap ftog = go
 -- traverse top down or bottom up
 
 -- | Map the f's to g's
-traverseF      :: forall f g h. (Functor f, Monad h)
-               => (forall a. f a -> h (g a)) -> Html f -> h (Html g)
+traverseF      :: forall f g h node. (Functor f, Monad h)
+               => (forall a. f a -> h (g a)) -> Html f node -> h (Html g node)
 traverseF ftog = undefined
   -- go
   -- where
@@ -104,8 +107,8 @@ traverseF ftog = undefined
 
 
 -- | Constructs a text node
-textNode_ :: Applicative f => Text -> Html f
-textNode_ = TextNode . pure
+textNode_ :: Applicative f => Text -> Html f ()
+textNode_ = TextNode () . pure
 
 -- | Constructs an element with fixed children (but each child itself
 -- is properly wrapped in an f)
@@ -115,17 +118,17 @@ el_             :: forall f. Applicative f
                 -> [f (AttributeName, f Text)]
                 -- ^ The Attributes. The outer f may be used to adapt
                 -- each individual attribute.
-                -> [f (Html f)]
+                -> [f (Html f ())]
                 -- ^ Children
-                -> Html f
-el_ tag ats chs = Element tag res (pure $ Seq.fromList chs)
+                -> Html f ()
+el_ tag ats chs = Element tag () res (pure $ Seq.fromList chs)
   where
     ats' :: f [Map.Map AttributeName (f Text)]
     ats' = traverse (fmap (uncurry Map.singleton)) ats
 
     res = fmap fold ats'
 
-myHtml :: Html Identity
+myHtml :: Html (Constant t) ()
 myHtml = div_ []
               [ pure $ button_ [ pure (id_ $ pure "minButton") ]
                                [ pure $ textNode_ "-" ]
@@ -143,14 +146,30 @@ id_     :: f Text  -> (AttributeName, f Text)
 id_ v   = (AttributeName "id", v)
 
 
+div_ :: Applicative f => [f (AttributeName, f Text)] -> [f (Html f ())] -> Html f ()
+div_ = el_ (ElementName "div")
 
-div_    = el_ (ElementName "div")
-
+button_ :: Applicative f => [f (AttributeName, f Text)] -> [f (Html f ())] -> Html f ()
 button_ = el_ (ElementName "button")
 
 
--- construct :: Html Identity -> Eff es ()
-
+-- | renders the given Html tree
+construct      :: (IsNode parent, DOM :> es)
+               => parent -> Html (Constant t) a -> Eff es (Html (Constant t) Node)
+construct root = go (asNode root)
+  where
+    go        :: DOM :> es => Node -> Html (Constant t) a -> Eff es (Html (Constant t) Node)
+    go parent = \case
+      TextNode _ text       -> do node <- asChildOf parent $ createTextNode (coerce text)
+                                  pure $ TextNode node text
+      Element tag _ ats chs -> do node <- asChildOf parent $ createElement tag
+                                  chs' <- traverse (go node)
+                                                   (coerce @_ @(Seq.Seq (Html (Constant _) _)) chs)
+                                  sequenceA_ [ setAttribute node attr (getConstant val)
+                                             | (attr,val) <-
+                                                 Map.toAscList (getConstant ats)
+                                             ]
+                                  pure $ Element tag node ats (coerce chs')
 
 --------------------------------------------------------------------------------
 
@@ -198,6 +217,10 @@ main = runEff . evalDOM $ withRuntime myMain
 
       plusButton2 <- asChildOf body $ createElement (ElementName "button")
       plusText2   <- asChildOf plusButton2 $ createTextNode "+"
+
+      --------------------------------------------------------------------------------
+
+      construct body myHtml
 
       --------------------------------------------------------------------------------
 
