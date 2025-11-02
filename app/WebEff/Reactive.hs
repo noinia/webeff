@@ -15,17 +15,16 @@ module WebEff.Reactive
 
 
   , RegisteredEffect
-  , createEffect
+  , createEffect, createEffect_
   , runEffect
   , registerEffect
 
-  -- , createEffect'
-  -- , runEffect'
 
-
-  , Proxy
+  , untypedGetSignalDyn
   ) where
 
+
+import Control.Monad (void)
 import Effectful.Exception (bracket)
 import Data.Kind (Type)
 import Data.Proxy
@@ -85,25 +84,33 @@ deleteSignal _ signal = modify $ \(runtime :: Runtime ls t) ->
 
 
 -- | Access the signal value
-getSignal          :: forall ls t es a. (HasRuntime ls t :> es
-                                        , Typeable a
-                                        ) => Ctx ls t -> Signal t a -> Eff es a
-getSignal _ signal = state $ \(runtime :: Runtime ls t) ->
+getSignal            :: forall ls t es a. ( HasRuntime ls t :> es
+                                          , Typeable a
+                                          ) => Ctx ls t -> Signal t a -> Eff es a
+getSignal ctx signal = state $ \(runtime :: Runtime ls t) ->
     runtime&signalAt' signal %%~ getAndSubscribe (runtime^.currentEffect)
+
+-- | Get the current value of the signal, furthermore register the currently running
+-- effect (if such an effect exists) as a subscriber of the signal.
+--
+-- returns the value, as well as the updated signal data (which
+-- contains the updated) subscribers.
+getAndSubscribe                    :: Maybe (RegisteredEffect t)
+                                   -> SignalData t a
+                                   -> (a, SignalData t a)
+getAndSubscribe current signalData = ( signalData^.theValue
+                                     , case current of
+                                         Nothing  -> signalData
+                                         Just eff -> signalData&subscribers %~ Set.insert eff
+                                     )
+
+-- | Access the signal value, the signal is represented as a raw Int
+untypedGetSignalDyn          :: forall ls t es. ( HasRuntime ls t :> es)
+                             => Ctx ls t -> Int -> Eff es Dynamic.Dynamic
+untypedGetSignalDyn _ signal = state $ \(runtime :: Runtime ls t) ->
+    runtime&untypedSignalAtDyn signal %%~ getAndSubscribe (runtime^.currentEffect)
   where
-    -- | Get the current value of the signal, furthermore register the currently running
-    -- effect (if such an effect exists) as a subscriber of the signal.
-    --
-    -- returns the value, as well as the updated signal data (which
-    -- contains the updated) subscribers.
-    getAndSubscribe                    :: Maybe (RegisteredEffect t)
-                                       -> SignalData t a
-                                       -> (a, SignalData t a)
-    getAndSubscribe current signalData = ( signalData^.theValue
-                                         , case current of
-                                             Nothing  -> signalData
-                                             Just eff -> signalData&subscribers %~ Set.insert eff
-                                         )
+    untypedSignalAtDyn i = singular (rawSignals.at i._Just)
 
 -- | Set the signal to a given value. (Possibly registering the
 -- current event as a subscriber). This
@@ -185,16 +192,17 @@ withLocalState initialize recombine act = do old  <- state initialize
 --------------------------------------------------------------------------------
 
 -- | Create a new registered effect and run it.
-createEffect         :: ( HasRuntime ls t :> es
-                        , Subset ls es
-                        )
-                     => Ctx ls t
-                     -> Eff (HasRuntime ls t : ls) ()
-                     -> Eff es (RegisteredEffect t)
+createEffect         :: ( HasRuntime ls t :> es, Subset ls es)
+                     => Ctx ls t -> Eff (HasRuntime ls t : ls) () -> Eff es (RegisteredEffect t)
 createEffect ctx eff = do
     effIx <- registerEffect eff
     runEffect effIx eff
     pure effIx
+
+-- | Create a new registered effect and run it.
+createEffect_         :: ( HasRuntime ls t :> es, Subset ls es )
+                      => Ctx ls t -> Eff (HasRuntime ls t : ls) () -> Eff es ()
+createEffect_ ctx eff = void $ createEffect ctx eff
 
 -- | Runs the local effect
 runEffect           :: forall ls t es.

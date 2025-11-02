@@ -10,6 +10,8 @@ import WebEff.FFI.Types
 import Data.Coerce
 import Data.IntMap (IntMap)
 import Data.IntMap qualified as IntMap
+import Data.IntSet qualified as IntSet
+import Data.Typeable
 import Data.Dynamic qualified as Dynamic
 import Effectful
 import Effectful.State.Static.Shared
@@ -107,7 +109,70 @@ foreign export javascript "hs_start"
 --                 in traverse (getSignal ..) fs
 
 
+--------------------------------------------------------------------------------
+data DerivedSignal t b where
+  Derive :: Typeable a => Signal t a -> (a -> b) -> DerivedSignal t b
 
+
+instance Functor (DerivedSignal t) where
+  fmap f (Derive signal g) = Derive signal (f . g)
+
+class HasCurrent signal a where
+  current :: (HasRuntime ls t :> es) => Ctx ls t -> signal t a -> Eff es a
+
+instance Typeable a => HasCurrent Signal a where
+  current = getSignal
+
+instance HasCurrent DerivedSignal a where
+  current ctx (Derive signal f) = f <$> getSignal ctx signal
+
+--------------------------------------------------------------------------------
+
+type Signals      = IntSet.IntSet
+type SignalValues = IntMap.IntMap Dynamic.Dynamic
+
+data Varying t b where
+  Varying :: Signals -> (SignalValues -> b) -> Varying t b
+    --the signals and signalValues should be the same
+
+-- | Produce a Varying that does not change.
+constant   :: a -> Varying t a
+constant x = Varying IntSet.empty (const x)
+
+varying        :: Typeable a => Signal t a -> Varying t a
+varying signal = Varying signals f
+  where
+    signals = IntSet.singleton (coerce signal)
+    f signalValues =  case Dynamic.fromDynamic (signalValues IntMap.! (coerce signal)) of
+      Nothing -> error "varying: wrong type!? "
+      Just x  -> x
+
+instance Functor (Varying t) where
+  fmap f (Varying signals g) = Varying signals (f . g)
+
+instance Applicative (Varying t) where
+  pure = constant
+  -- ff :: Signals -> (a -> b)
+  -- fx :: Signals -> a
+  (Varying fSignals ff) <*> (Varying xSignals fx) = Varying signals f
+    where
+      signals        = fSignals `IntSet.union` xSignals
+      f signalValues = ff signalValues (fx signalValues)
+
+instance HasCurrent Varying a where
+  current ctx (Varying signals f) = f <$> sequence signalValues
+    where
+      signalValues = IntMap.fromSet (untypedGetSignalDyn ctx) signals
+      -- we get thevalues from the sginals (as untyped dyns); making sure to register
+      -- that we access those signal values.
+
+--------------------------------------------------------------------------------
+
+asChildOf               :: (IsNode parent, IsNode child, DOM :> es)
+                        => parent -> Eff es child -> Eff es child
+asChildOf parent create = do new <- create
+                             appendChild parent new
+                             pure new
 
 main :: IO ()
 main = runEff . evalDOM $ withRuntime myMain
@@ -121,43 +186,75 @@ main = runEff . evalDOM $ withRuntime myMain
     myMain ctx = do
 
       body <- jsBody
-      minButton  <- createElement (ElementName "button")
-      minText    <- createTextNode "-"
 
-      textValue  <- createTextNode "initial text"
+      --------------------------------------------------------------------------------
+      minButton  <- asChildOf body      $ createElement (ElementName "button")
+      minText    <- asChildOf minButton $ createTextNode "-"
 
-      plusButton <- createElement (ElementName "button")
-      plusText  <- createTextNode "+"
+      textValue  <- asChildOf body $ createTextNode "initial text"
 
-      appendChild body minButton
-      appendChild minButton minText
+      plusButton <- asChildOf body $ createElement (ElementName "button")
+      plusText   <- asChildOf plusButton $ createTextNode "+"
 
-      appendChild body textValue
+      doubleValue  <- asChildOf body $ createTextNode "initial double value"
 
-      appendChild body plusButton
-      appendChild plusButton plusText
+      --------------------------------------------------------------------------------
+
+      minButton2  <- asChildOf body      $ createElement (ElementName "button")
+      minText2    <- asChildOf minButton2 $ createTextNode "-"
+
+      combinedValue  <- asChildOf body $ createTextNode "combined text"
+
+      plusButton2 <- asChildOf body $ createElement (ElementName "button")
+      plusText2   <- asChildOf plusButton2 $ createTextNode "+"
+
+      --------------------------------------------------------------------------------
+
+      -- withSignal ctx 0 $ \counter -> do
+      counter  <- createSignal ctx 0
+      counter2 <- createSignal ctx 0
+
+      let doubleCounter = Derive counter (*2)
+
+      let handler     :: Event -> Eff (HasRuntime ls t : ls) ()
+          handler evt = do
+              consoleLog "- clicked"
+              v <- modifySignal ctx counter pred
+              setTextContent textValue ("counter 1 : " <> Text.show v)
+
+          myMinEffect :: Eff (HasRuntime ls t : ls) ()
+          myMinEffect = void $ addEventListener minButton (EventName "click") handler
+
+      createEffect_ ctx myMinEffect
+
+      createEffect_ ctx $ do
+            void $ addEventListener' plusButton (EventName "click") $ \evt -> do
+              consoleLog "+ clicked"
+              setTextContent textValue "+ clicked"
+              v <- modifySignal ctx counter succ
+              setTextContent textValue ("counter 1 : " <> Text.show v)
+
+      createEffect_ ctx $ do
+        let f x = "double counter1 value: " <> Text.show x
+        setTextContent doubleValue . f =<< current ctx doubleCounter
 
 
-      withSignal ctx 0 $ \counter -> do
-        let handler     :: Event -> Eff (HasRuntime ls t : ls) ()
-            handler evt = do
-                consoleLog "- clicked"
-                v <- modifySignal ctx counter pred
-                setTextContent textValue (Text.show v)
+      --------------------------------------------------------------------------------
+      createEffect_ ctx $ do
+            void $ addEventListener' plusButton2 (EventName "click") $ \evt -> do
+              consoleLog "+ button 2 clicked"
+              void $ modifySignal ctx counter2 succ
+      createEffect_ ctx $ do
+            void $ addEventListener' minButton2 (EventName "click") $ \evt -> do
+              consoleLog "- button 2 clicked"
+              void $ modifySignal ctx counter2 pred
 
-            myMinEffect :: Eff (HasRuntime ls t : ls) ()
-            myMinEffect = void $ addEventListener minButton (EventName "click") handler
+      let combined = (+) <$> varying counter <*> varying counter2
+          combinedText = (\x -> "combined text" <> Text.show x)
+                         <$> combined
 
-        void $ createEffect ctx myMinEffect
-
-        void $ createEffect ctx $ do
-              void $ addEventListener' plusButton (EventName "click") $ \evt -> do
-                consoleLog "+ clicked"
-                setTextContent textValue "+ clicked"
-                v <- modifySignal ctx counter succ
-                setTextContent textValue (Text.show v)
-
-
+      createEffect_ ctx $ do
+        setTextContent combinedValue =<< current ctx combinedText
 
 
 

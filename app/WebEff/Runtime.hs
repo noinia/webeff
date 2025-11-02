@@ -3,7 +3,9 @@
 module WebEff.Runtime
   ( Runtime
   , currentEffect
-  , nextSignalId, rawSignals, signalAtDyn, signalAt, signalAt'
+  , nextSignalId, rawSignals
+  , signalAt, signalAt'
+  , signalAtDyn, signalAtDyn'
   , nextEffectId, rawEffects, effectAt
 
   , HasRuntime
@@ -104,7 +106,11 @@ signalAtDyn signal = rawSignals.at (coerce signal)._Just
 signalAt'        :: Typeable a => Signal t a -> Lens' (Runtime ls t) (SignalData t a)
 signalAt' signal = singular (signalAt signal)
 
--- Applicative f => a -> f b -> s -> f t
+-- | Access the signalData for a given signal. This gives accessto the Signal Data
+-- as a Dynamic.
+signalAtDyn'        :: Signal t a -> Lens' (Runtime ls t) (SignalData t Dynamic.Dynamic)
+signalAtDyn' signal = singular (signalAtDyn signal)
+
 
 effectAt       :: RegisteredEffect t
                -> Traversal' (Runtime ls t) (Eff (State (Runtime ls t) : ls) ())
