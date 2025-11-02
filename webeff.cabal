@@ -82,6 +82,11 @@ executable webeff
         WebEff.Reactive
         WebEff.Runtime
 
+        WebEff.Signal.Type
+        WebEff.Signal.Derived
+
+        WebEff.Varying
+
 
     -- other-extensions:
     build-depends:

@@ -3,12 +3,13 @@ module WebEff.Reactive
   , withRuntime
   , createRuntime
 
+  , HasCurrent(..)
 
   , Signal
   , withSignal
   , getSignal
   , setSignal
-  , modifySignal
+  , modifySignal, modifySignal_
 
 
   , createSignal, deleteSignal
@@ -163,13 +164,13 @@ subscribeCurrentEffectTo _ signal = \case
   Just eff -> modify $ \(runtime :: Runtime ls t) ->
                          runtime&singular (signalAtDyn signal).subscribers %~ Set.insert eff
 
-
--- reRun :: f (RegisteredEffect t) -> Eff es ()
--- reRun = traverse
-
--- instance Foldable Set.EnumSet where
---   foldMap f
-
+-- | Modify a signal value.
+modifySignal_              :: forall ls t es a. ( HasRuntime ls t :> es
+                                                , Subset ls es
+                                                , Typeable a
+                                                )
+                           => Ctx ls t -> Signal t a -> (a -> a) -> Eff es ()
+modifySignal_ ctx signal f = void $ modifySignal ctx signal f
 
 --------------------------------------------------------------------------------
 
@@ -258,3 +259,14 @@ registerEffect f = state $ \(runtime :: Runtime ls t) ->
 
   -- do State mvar <- evalStaticRep
   --                         evalStateMVar
+
+
+--------------------------------------------------------------------------------
+
+-- | Class for signal like things for which we can get the current value.
+class HasCurrent signal a where
+  -- | Access the current value of a signal (or a derived signal, or varying).
+  current :: (HasRuntime ls t :> es) => Ctx ls t -> signal t a -> Eff es a
+
+instance Typeable a => HasCurrent Signal a where
+  current = getSignal

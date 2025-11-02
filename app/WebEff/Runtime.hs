@@ -13,7 +13,6 @@ module WebEff.Runtime
   , withRuntime, withRuntime'
   , createRuntime
 
-
   , SignalData(SignalData), theValue, subscribers
   , signalValue
 
@@ -45,12 +44,8 @@ import Effectful
 import Data.Dynamic.Lens qualified as LensDynamic
 import Data.Dynamic.Lens (_Dynamic)
 import Effectful.State.Static.Shared
-
+import WebEff.Signal.Type
 --------------------------------------------------------------------------------
-
-
-newtype Signal t a = Signal Int
-                   deriving (Show,Eq,Ord,Enum)
 
 newtype RegisteredEffect t = RegisteredEffect Int
                            deriving (Show,Eq,Ord,Enum)
@@ -78,6 +73,8 @@ data Runtime ls t = Runtime { _rawSignals    :: IntMap (SignalData t Dynamic.Dyn
 
 makeLenses ''Runtime
 
+
+--------------------------------------------------------------------------------
 
 type HasRuntime ls t = State (Runtime ls t)
 
@@ -154,3 +151,7 @@ withRuntime' f = f @() $ createRuntime @ls @()
 
 -- | Context
 data Ctx (ls :: [Effect]) (t :: Type) = Ctx
+
+
+
+--------------------------------------------------------------------------------

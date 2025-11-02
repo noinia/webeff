@@ -162,6 +162,7 @@ addEventListener target (EventName e) handler = inject act
                             (unlift . handler . Event)
       -- the call to unlift turns a 'Eff handlerEs a' into an 'IO a'
 
+
 -- | Removes the given event listener
 removeEventListener                 :: (IsEventTarget eventTarget, DOM :> es)
                                     => eventTarget

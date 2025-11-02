@@ -6,11 +6,11 @@ module Main where
 import Control.Monad
 import WebEff.Reactive
 import WebEff.FFI
+import WebEff.Varying
+import WebEff.Signal.Derived
 import WebEff.FFI.Types
 import Data.Coerce
 import Data.IntMap (IntMap)
-import Data.IntMap qualified as IntMap
-import Data.IntSet qualified as IntSet
 import Data.Typeable
 import Data.Dynamic qualified as Dynamic
 import Effectful
@@ -110,61 +110,9 @@ foreign export javascript "hs_start"
 
 
 --------------------------------------------------------------------------------
-data DerivedSignal t b where
-  Derive :: Typeable a => Signal t a -> (a -> b) -> DerivedSignal t b
-
-
-instance Functor (DerivedSignal t) where
-  fmap f (Derive signal g) = Derive signal (f . g)
-
-class HasCurrent signal a where
-  current :: (HasRuntime ls t :> es) => Ctx ls t -> signal t a -> Eff es a
-
-instance Typeable a => HasCurrent Signal a where
-  current = getSignal
-
-instance HasCurrent DerivedSignal a where
-  current ctx (Derive signal f) = f <$> getSignal ctx signal
 
 --------------------------------------------------------------------------------
 
-type Signals      = IntSet.IntSet
-type SignalValues = IntMap.IntMap Dynamic.Dynamic
-
-data Varying t b where
-  Varying :: Signals -> (SignalValues -> b) -> Varying t b
-    --the signals and signalValues should be the same
-
--- | Produce a Varying that does not change.
-constant   :: a -> Varying t a
-constant x = Varying IntSet.empty (const x)
-
-varying        :: Typeable a => Signal t a -> Varying t a
-varying signal = Varying signals f
-  where
-    signals = IntSet.singleton (coerce signal)
-    f signalValues =  case Dynamic.fromDynamic (signalValues IntMap.! (coerce signal)) of
-      Nothing -> error "varying: wrong type!? "
-      Just x  -> x
-
-instance Functor (Varying t) where
-  fmap f (Varying signals g) = Varying signals (f . g)
-
-instance Applicative (Varying t) where
-  pure = constant
-  -- ff :: Signals -> (a -> b)
-  -- fx :: Signals -> a
-  (Varying fSignals ff) <*> (Varying xSignals fx) = Varying signals f
-    where
-      signals        = fSignals `IntSet.union` xSignals
-      f signalValues = ff signalValues (fx signalValues)
-
-instance HasCurrent Varying a where
-  current ctx (Varying signals f) = f <$> sequence signalValues
-    where
-      signalValues = IntMap.fromSet (untypedGetSignalDyn ctx) signals
-      -- we get thevalues from the sginals (as untyped dyns); making sure to register
-      -- that we access those signal values.
 
 --------------------------------------------------------------------------------
 
@@ -243,11 +191,11 @@ main = runEff . evalDOM $ withRuntime myMain
       createEffect_ ctx $ do
             void $ addEventListener' plusButton2 (EventName "click") $ \evt -> do
               consoleLog "+ button 2 clicked"
-              void $ modifySignal ctx counter2 succ
+              modifySignal_ ctx counter2 succ
       createEffect_ ctx $ do
             void $ addEventListener' minButton2 (EventName "click") $ \evt -> do
               consoleLog "- button 2 clicked"
-              void $ modifySignal ctx counter2 pred
+              modifySignal_ ctx counter2 pred
 
       let combined = (+) <$> varying counter <*> varying counter2
           combinedText = (\x -> "combined text" <> Text.show x)
@@ -255,6 +203,9 @@ main = runEff . evalDOM $ withRuntime myMain
 
       createEffect_ ctx $ do
         setTextContent combinedValue =<< current ctx combinedText
+
+--------------------------------------------------------------------------------
+
 
 
 
