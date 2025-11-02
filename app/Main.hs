@@ -110,54 +110,55 @@ foreign export javascript "hs_start"
 
 
 main :: IO ()
-main = do
-  body <- js_body
-  minButton  <- js_createElement (textToJSString "button")
-  minText    <- js_createTextNode (textToJSString "-")
+main = runEff . evalDOM $ withRuntime myMain
+  where
+    myMain     :: forall t es ls. ( ls ~ '[ DOM , IOE ]
+                                  , DOM :> es
+                                  , Subset ls es
+                                  , HasRuntime ls t :> es
+                                  )
+               => Ctx ls t -> Eff es ()
+    myMain ctx = do
 
-  textValue  <- js_createTextNode (textToJSString "initial text")
+      body <- jsBody
+      minButton  <- createElement (ElementName "button")
+      minText    <- createTextNode "-"
 
-  plusButton <- js_createElement (textToJSString "button")
-  plusText  <- js_createTextNode (textToJSString "+")
+      textValue  <- createTextNode "initial text"
 
-  js_appendChild (coerce body) minButton
-  js_appendChild minButton minText
+      plusButton <- createElement (ElementName "button")
+      plusText  <- createTextNode "+"
 
-  js_appendChild (coerce body) textValue
+      appendChild body minButton
+      appendChild minButton minText
 
-  js_appendChild (coerce body) plusButton
-  js_appendChild plusButton plusText
+      appendChild body textValue
 
-  let
-      myMain     :: forall t es ls. ( ls ~ '[ DOM , IOE ]
-                                    -- , DOM :> es
-                                    , Subset ls es
-                                    , HasRuntime ls t :> es
-                                    )
-                 => Ctx ls t -> Eff es ()
-      myMain ctx = do
-        withSignal ctx 0 $ \counter -> do
-          let handler     :: Event -> Eff (HasRuntime ls t : ls) ()
-              handler evt = do
-                  consoleLog "- clicked"
-                  v <- modifySignal ctx counter pred
-                  setTextContent textValue (Text.show v)
+      appendChild body plusButton
+      appendChild plusButton plusText
 
-              myMinEffect :: Eff (HasRuntime ls t : ls) ()
-              myMinEffect = void $ addEventListener minButton (EventName "click") handler
 
-          void $ createEffect ctx myMinEffect
+      withSignal ctx 0 $ \counter -> do
+        let handler     :: Event -> Eff (HasRuntime ls t : ls) ()
+            handler evt = do
+                consoleLog "- clicked"
+                v <- modifySignal ctx counter pred
+                setTextContent textValue (Text.show v)
 
-          void $ createEffect ctx $ do
-                void $ addEventListener' plusButton (EventName "click") $ \evt -> do
-                  consoleLog "+ clicked"
-                  setTextContent textValue "+ clicked"
-                  v <- modifySignal ctx counter succ
-                  setTextContent textValue (Text.show v)
+            myMinEffect :: Eff (HasRuntime ls t : ls) ()
+            myMinEffect = void $ addEventListener minButton (EventName "click") handler
 
-  runEff . evalDOM $ withRuntime myMain
+        void $ createEffect ctx myMinEffect
 
-  putStrLn "woei"
+        void $ createEffect ctx $ do
+              void $ addEventListener' plusButton (EventName "click") $ \evt -> do
+                consoleLog "+ clicked"
+                setTextContent textValue "+ clicked"
+                v <- modifySignal ctx counter succ
+                setTextContent textValue (Text.show v)
+
+
+
 
 
 --------------------------------------------------------------------------------
