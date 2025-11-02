@@ -2,7 +2,8 @@
 {-# LANGUAGE AllowAmbiguousTypes  #-}
 module Main where
 
-
+import Data.Foldable
+import Data.Functor.Classes
 import Control.Monad
 import WebEff.Reactive
 import WebEff.FFI
@@ -11,6 +12,8 @@ import WebEff.Signal.Derived
 import WebEff.FFI.Types
 import Data.Coerce
 import Data.IntMap (IntMap)
+import Data.Map qualified as Map
+import Data.Sequence qualified as Seq
 import Data.Typeable
 import Data.Dynamic qualified as Dynamic
 import Effectful
@@ -49,69 +52,79 @@ foreign export javascript "hs_start"
 
 --------------------------------------------------------------------------------
 
--- data HList (ts :: [Type]) where
---   HNil  :: HList '[]
---   HCons :: t -> HList ts -> HList (t : ts)
+data Html f = TextNode (f Text)
+            | Element  ElementName (f (Map.Map AttributeName (f Text   )))
+                                   (f (Seq.Seq               (f (Html f))))
 
 
--- type family as ++ bs where
---   '[]      ++ bs = bs
---   (a : as) ++ bs = a : (as ++ bs)
+deriving instance Show1 f => Show (Html f)
+deriving instance Eq1 f   => Eq   (Html f)
 
--- class HConcat list where
---   hConcat :: list as -> list bs -> list (as ++ bs)
+-- | Map the f's to g's
+mapF      :: forall f g. Functor f => (forall a. f a -> g a) -> Html f -> Html g
+mapF ftog = go
+  where
+    go = \case
+      TextNode text       -> TextNode (ftog text)
+      Element tag ats chs -> Element tag (ftog $ applyAts <$> ats) (ftog $ applyChs <$> chs)
 
--- instance HConcat HList where
---   hConcat as bs = case as of
---     HNil        -> bs
---     HCons a as' -> HCons a (hConcat as' bs)
+    applyAts :: Map.Map AttributeName (f Text) -> Map.Map AttributeName (g Text)
+    applyAts = fmap ftog
 
--- class HSplit as where
---   hSplit :: (cs ~ as ++ bs) => HList cs -> (HList as, HList bs)
+    applyChs :: Seq.Seq (f (Html f)) -> Seq.Seq (g (Html g))
+    applyChs = fmap (ftog . fmap go)
 
--- instance HSplit '[] where
---   hSplit bs = (HNil, bs)
+{-
+-- I t hink this needs h to be a monad, moreover we need to pick whether to
+-- traverse top down or bottom up
 
--- instance HSplit ts => HSplit (t:ts) where
---   hSplit (HCons a ts) = let (as, bs) = hSplit ts
---                         in (HCons a as, bs)
+-- | Map the f's to g's
+traverseF      :: forall f g. (Functor f, Applicative h)
+               => (forall a. f a -> h (g a)) -> Html f -> h (Html g)
+traverseF ftog = go
+  where
+    go = \case
+      TextNode text       -> TextNode <$> ftog text
+      Element tag ats chs -> Element tag <$> (ftog $ applyAts <$> ats)
+                                         <*> (ftog $ applyChs <$> chs)
 
+    flatten :: f (h (Map k v)) -> h ..
+    flatten = ftog
 
--- data SigList t (as :: [Type]) where
---   SigNil  ::                               SigList t '[]
---   SigCons :: Signal t a -> SigList t as -> SigList t (a : as)
+    applyAts :: Map.Map AttributeName (f Text) -> h (Map.Map AttributeName (g Text))
+    applyAts = traverse ftog
 
--- instance HConcat (SigList t) where
---   hConcat as bs = case as of
---     SigNil        -> bs
---     SigCons a as' -> SigCons a (hConcat as' bs)
-
-
--- data Varying t b where
---   Varying :: SigList t as -> (HList as -> b) -> Varying t b
-
---     -- Signal t a -> (a -> b) -> Varying t b
-
--- instance Functor (Varying t) where
---   fmap f (Varying signal g) = Varying signal (f . g)
-
--- instance Applicative (Varying t) where
---   pure x = Varying SigNil (const x)
-
---   -- func :: Signal t i
---   -- g    :: (i -> (a -> b))
---   --
---   -- signal :: Signal t j
---   -- h      :: j -> a
---   (Varying func g) <*> (Varying sigs h) = Varying (hConcat func sigs) go
---     where
---       go sigs = let (fs, as) = hSplit sigs
---                 in traverse (getSignal ..) fs
+    applyChs :: Seq.Seq (f (Html f)) -> Seq.Seq (g (Html g))
+    applyChs = fmap (ftog . fmap go)
+-}
 
 
---------------------------------------------------------------------------------
+textNode_ :: Applicative f => Text -> Html f
+textNode_ = TextNode . pure
 
---------------------------------------------------------------------------------
+-- Constructs an element with fixed children (but each child itself may be varying)
+el_             :: forall f. Applicative f
+                => ElementName -> [f (AttributeName, f Text)] -> [f (Html f)]
+                -> Html f
+el_ tag ats chs = Element tag res (pure $ Seq.fromList chs)
+  where
+    ats' :: f [Map.Map AttributeName (f Text)]
+    ats' = traverse (fmap (uncurry Map.singleton)) ats
+
+    res = fmap fold ats'
+
+myHtml :: Html Identity
+myHtml = div_ []
+              [ pure $ button_ [] [pure $ textNode_ "-"]
+              , pure $ textNode_ "woei"
+              , pure $ button_ [] [pure $ textNode_ "+"]
+              ]
+
+div_    = el_ (ElementName "div")
+button_ = el_ (ElementName "button")
+
+
+
 
 
 --------------------------------------------------------------------------------
