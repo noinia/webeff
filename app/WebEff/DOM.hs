@@ -28,6 +28,7 @@ module WebEff.DOM
   , setProperty
 
   , appendStyleSheet
+  , appendScript
   ) where
 
 import           Data.Coerce
@@ -214,6 +215,16 @@ appendStyleSheet url = do hd   <- jsHead
                           setProperty link (PropertyName "href") (coerce url)
                           appendChild hd link
                           pure link
+
+
+-- | Appends a script to thead of the page
+appendScript     :: (DOM :> es) => URL -> Eff es Node
+appendScript url = do hd   <- jsHead
+                      link <- createElement (ElementName "script")
+                      setProperty link (PropertyName "src") (coerce url)
+                      appendChild hd link
+                      pure link
+
 
 --------------------------------------------------------------------------------
 {- -- the old event handler setup

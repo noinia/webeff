@@ -74,6 +74,7 @@ executable webeff
     main-is:          Main.hs
     ghc-options: -no-hs-main -optl-mexec-model=reactor -optl-Wl,--export=hs_start
     other-modules:
+        WebEff
         WebEff.FFI
         WebEff.FFI.Types
         WebEff.FFI.Classes
