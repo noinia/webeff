@@ -9,7 +9,7 @@ module WebEff.Reactive
   , withSignal
   , getSignal
   , setSignal
-  , modifySignal, modifySignal_
+  , modifySignal
 
 
   , createSignal, deleteSignal
@@ -27,7 +27,7 @@ module WebEff.Reactive
   ) where
 
 
-import Control.Monad (void)
+import Control.Monad (void, when)
 import Effectful.Exception (bracket)
 import Data.Kind (Type, Constraint)
 import Data.Proxy
@@ -117,21 +117,18 @@ untypedGetSignalDyn _ signal = state $ \(runtime :: Runtime ls t) ->
 
 -- | Set the signal to a given value. (Possibly registering the
 -- current event as a subscriber). This
-setSignal            :: forall ls t es a. ( HasRuntime ls t :> es
-                                          , Subset ls es
-                                          , Typeable a
-                                          )
-                     => Ctx ls t -> Signal t a -> a -> Eff es ()
-setSignal _ signal x = do
+setSignal              :: forall ls t es a. ( HasRuntime ls t :> es
+                                            , Subset ls es
+                                            , Typeable a
+                                            )
+                       => Ctx ls t -> Signal t a -> a -> Eff es ()
+setSignal ctx signal x = do
       -- set the value, and get the current subscribers
       subs <- state $ \(runtime :: Runtime ls t) ->
                         runtime&signalAt' signal %%~ \sigData ->
                                      (sigData^.subscribers, sigData&theValue .~ x)
-      traverse_ rerun (Set.elems subs)
+      traverse_ (runEffect ctx) (Set.elems subs)
   where
-    rerun       :: RegisteredEffect t -> Eff es ()
-    rerun effIx = do (eff :: Eff (HasRuntime ls t:ls) ()) <- gets (^.effectAt effIx)
-                     runEffect effIx eff
 
 -- | Access and update the signal value. Returns the new value. This
 -- triggers re-running the effects that subscribe to this signal
@@ -143,19 +140,15 @@ modifySignal              :: forall ls t es a. ( HasRuntime ls t :> es
                           -> Signal t a
                           -> (a -> a)
                            -- ^ update function
-                          -> Eff es a
+                          -> Eff es ()
 modifySignal ctx signal f = do
     (signalData, current) <- state $ \(runtime :: Runtime ls t) ->
                                        runtime&signalAt' signal %%~ \sigData ->
                                            let sigData' = sigData&theValue %~ f
                                            in ((sigData',runtime^.currentEffect),sigData')
-    traverse_ rerun (signalData^.subscribers.to Set.elems)
+    traverse_ (runEffect ctx) (signalData^.subscribers.to Set.elems)
     subscribeCurrentEffectTo ctx signal current
-    pure $ signalData^.theValue
-  where
-    rerun       :: RegisteredEffect t -> Eff es ()
-    rerun effIx = do (eff :: Eff (HasRuntime ls t : ls) ()) <- gets (^.effectAt effIx)
-                     runEffect effIx eff
+    -- pure $ signalData^.theValue
 
 -- | if we have a current effect, add it as a subscriber
 subscribeCurrentEffectTo          :: forall ls t es a. (HasRuntime ls t :> es)
@@ -166,13 +159,13 @@ subscribeCurrentEffectTo _ signal = \case
   Just eff -> modify $ \(runtime :: Runtime ls t) ->
                          runtime&singular (signalAtDyn signal).subscribers %~ Set.insert eff
 
--- | Modify a signal value.
-modifySignal_              :: forall ls t es a. ( HasRuntime ls t :> es
-                                                , Subset ls es
-                                                , Typeable a
-                                                )
-                           => Ctx ls t -> Signal t a -> (a -> a) -> Eff es ()
-modifySignal_ ctx signal f = void $ modifySignal ctx signal f
+-- -- | Modify a signal value.
+-- modifySignal_              :: forall ls t es a. ( HasRuntime ls t :> es
+--                                                 , Subset ls es
+--                                                 , Typeable a
+--                                                 )
+--                            => Ctx ls t -> Signal t a -> (a -> a) -> Eff es ()
+-- modifySignal_ ctx signal f = void $ modifySignal ctx signal f
 
 --------------------------------------------------------------------------------
 
@@ -183,11 +176,12 @@ withLocalState       :: (State s :> es)
                      -> (old -> s -> s)
                      -- ^ function that recombines the previous state and the newer
                      -- state (i.e. after running the action) into a final state
-                     -> Eff es a
-                     -- ^ The effect to run with the local state
+                     -> (old -> Eff es a)
+                     -- ^ The effect to run with the local state. Also still has access
+                     -- to the old state
                      -> Eff es a
 withLocalState initialize recombine act = do old  <- state initialize
-                                             x    <- act
+                                             x    <- act old
                                              modify $ recombine old
                                              pure x
 
@@ -199,7 +193,7 @@ createEffect         :: ( HasRuntime ls t :> es, Subset ls es)
                      => Ctx ls t -> Eff (HasRuntime ls t : ls) () -> Eff es (RegisteredEffect t)
 createEffect ctx eff = do
     effIx <- registerEffect eff
-    runEffect effIx eff
+    runEffect' effIx eff
     pure effIx
 
 -- | Create a new registered effect and run it.
@@ -207,20 +201,38 @@ createEffect_         :: ( HasRuntime ls t :> es, Subset ls es )
                       => Ctx ls t -> Eff (HasRuntime ls t : ls) () -> Eff es ()
 createEffect_ ctx eff = void $ createEffect ctx eff
 
--- | Runs the local effect
-runEffect           :: forall ls t es.
-                       ( HasRuntime ls t :> es
-                       , Subset ls es
-                       )
-                    => RegisteredEffect t
-                    -> Eff (HasRuntime ls t : ls) ()
-                    -> Eff es ()
-runEffect effIx eff = withLocalState (currentEffect %%~ \oldIx -> (oldIx, Just effIx))
-                                     recombine  -- we restore only the currentEffect
-                                     (inject eff)
+
+-- | Runs the given given effect.
+runEffect         :: forall ls t es.
+                     ( HasRuntime ls t :> es
+                     , Subset ls es
+                     )
+                  => Ctx ls t -> RegisteredEffect t -> Eff es ()
+runEffect _ effIx = do (eff :: Eff (HasRuntime ls t:ls) ()) <- gets (^.effectAt effIx)
+                       runEffect' @ls effIx eff
+
+-- | the actual implementation of runEffect (i.e. given both the
+-- effectIx as well as the effect).
+runEffect'           :: forall ls t es.
+                        ( HasRuntime ls t :> es
+                        , Subset ls es
+                        )
+                     => RegisteredEffect t
+                     -> Eff (HasRuntime ls t : ls) ()
+                     -> Eff es ()
+runEffect' effIx eff = withLocalState (currentEffect %%~ \oldIx -> (oldIx, Just effIx))
+                                      recombine  -- we restore only the currentEffect
+                                      (\oldIx -> when (oldIx /= Just effIx)
+                                                       (inject eff)
+                                      )
+                                      -- don't run the effect if we
+                                      -- are currently already running
+                                      -- the effect.
   where
     recombine                :: Maybe (RegisteredEffect t) -> Runtime ls t -> Runtime ls t
     recombine oldIx newState = newState&currentEffect .~ oldIx
+
+
 
 
 -- | Create/register a new registered effect.

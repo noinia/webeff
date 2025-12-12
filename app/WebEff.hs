@@ -3,32 +3,31 @@
 module WebEff(main) where
 
 
+import Control.Lens
+import Control.Monad
+import Data.Coerce
+import Data.Dynamic qualified as Dynamic
 import Data.Foldable
 import Data.Functor.Classes
-import Control.Monad
-import WebEff.Reactive
-import WebEff.FFI
-import WebEff.Varying
-import WebEff.Signal.Derived
-import WebEff.FFI.Types
-import Data.Coerce
 import Data.IntMap (IntMap)
+import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Sequence qualified as Seq
-import Data.Typeable
-import Data.Dynamic qualified as Dynamic
-import Effectful
-import Effectful.State.Static.Shared
-import Control.Lens
-import WebEff.Runtime
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.Typeable
+import Effectful
 import Effectful.Dispatch.Static
-import Data.Kind (Type)
-import GHC.Wasm.Prim (JSVal)
+import Effectful.State.Static.Shared
 import WebEff.DOM
+import WebEff.FFI
+import WebEff.FFI.Types
+import WebEff.Reactive
+import WebEff.Runtime
+import WebEff.Signal.Derived
+import WebEff.Varying
 -- import Data.Functor.Apply qualified as Apply
-
+import Effectful.Dispatch.Dynamic (interpret, send)
 --------------------------------------------------------------------------------
 
 
@@ -51,41 +50,45 @@ import WebEff.DOM
 
 --------------------------------------------------------------------------------
 
-type View t node = Html (Varying t) node
+type View t node evt = Html (Varying t) node evt
 
-data Html f node = TextNode node (f Text)
-                 | Element  ElementName node (f (Map.Map AttributeName (f Text         )))
-                                             (f (Seq.Seq               (f (Html f node))))
+-- | Data type modelling a Html Tree. All actual values are wrapped in
+-- an 'f' functor.  furthermore, we are storing a value of type 'node'
+-- at every node. Event handlers are of type 'evt'
+data Html f node evt = TextNode node (f Text)
+                     | Element  ElementName node (f (Map.Map AttributeName (f Text            )))
+                                                 (f (Map.Map EventName     (f evt             )))
+                                                 (f (Seq.Seq               (f (Html f node evt))))
             -- todo; it's abit weird that attributes are text
   deriving stock (Functor, Foldable, Traversable)
 
 
-deriving instance (Show1 f, Show node) => Show (Html f node)
-deriving instance (Eq1 f, Eq node)     => Eq   (Html f node)
-
-
+deriving instance (Show1 f, Show node, Show evt) => Show (Html f node evt)
+deriving instance (Eq1 f, Eq node, Eq evt)       => Eq   (Html f node evt)
 
 -- | Map the f's to g's
-bmap      :: forall f g node. Functor f => (forall a. f a -> g a) -> Html f node -> Html g node
+bmap      :: forall f g node evt. Functor f
+          => (forall a. f a -> g a) -> Html f node evt -> Html g node evt
 bmap ftog = go
   where
     go = \case
-      TextNode n text       -> TextNode n (ftog text)
-      Element tag n ats chs -> Element tag n (ftog $ applyAts <$> ats) (ftog $ applyChs <$> chs)
+      TextNode n text            -> TextNode n (ftog text)
+      Element tag n ats evts chs -> Element tag n (ftog $ applyAts <$> ats)
+                                                  (ftog $ applyAts <$> evts)
+                                                  (ftog $ applyChs <$> chs)
 
-    applyAts :: Map.Map AttributeName (f Text) -> Map.Map AttributeName (g Text)
+    applyAts :: forall k a. Map.Map k (f a) -> Map.Map k (g a)
     applyAts = fmap ftog
 
-    applyChs :: Seq.Seq (f (Html f node)) -> Seq.Seq (g (Html g node))
+    applyChs :: Seq.Seq (f (Html f node evt)) -> Seq.Seq (g (Html g node evt))
     applyChs = fmap (ftog . fmap go)
-
 
 -- I t hink this needs h to be a monad, moreover we need to pick whether to
 -- traverse top down or bottom up
 
 -- | Map the f's to g's
-traverseF      :: forall f g h node. (Functor f, Monad h)
-               => (forall a. f a -> h (g a)) -> Html f node -> h (Html g node)
+traverseF      :: forall f g h node evt. (Functor f, Monad h)
+               => (forall a. f a -> h (g a)) -> Html f node  evt -> h (Html g node evt)
 traverseF ftog = undefined
   -- go
   -- where
@@ -106,30 +109,65 @@ traverseF ftog = undefined
 
 
 -- | Constructs a text node
-textNode_ :: Applicative f => Text -> Html f ()
+textNode_ :: Applicative f => Text -> Html f () evt
 textNode_ = TextNode () . pure
+
+
+data Attr f a msg = Attribute {-# UNPACK #-}!AttributeName (f a)
+                  | OnEvent   {-# UNPACK #-}!EventName     (f msg)
+
 
 -- | Constructs an element with fixed children (but each child itself
 -- is properly wrapped in an f)
-el_             :: forall f. Applicative f
+el_             :: forall f evt. Applicative f
                 => ElementName
                 -- ^ The element we are constructing
-                -> [f (AttributeName, f Text)]
+                -> [f (Attr f Text evt)]
                 -- ^ The Attributes. The outer f may be used to adapt
                 -- each individual attribute.
-                -> [f (Html f ())]
+                -> [f (Html f () evt)]
                 -- ^ Children
-                -> Html f ()
-el_ tag ats chs = Element tag () res (pure $ Seq.fromList chs)
+                -> Html f () evt
+el_ tag ats chs = Element tag () attrs evts (pure $ Seq.fromList chs)
   where
+    attrs = fmap fold ats'
     ats' :: f [Map.Map AttributeName (f Text)]
-    ats' = traverse (fmap (uncurry Map.singleton)) ats
+    ats' = traverse (fmap toAttrMap) ats
 
-    res = fmap fold ats'
+    toAttrMap :: Attr f Text evt -> Map.Map AttributeName (f Text)
+    toAttrMap = \case
+      Attribute name val -> Map.singleton name val
+      _                  -> Map.empty
+
+    evts = fmap fold evts'
+
+    evts' :: f [Map.Map EventName (f evt)]
+    evts' = traverse (fmap toEventMap) ats
+
+    toEventMap :: Attr f Text evt -> Map.Map EventName (f evt)
+    toEventMap = \case
+      OnEvent name val -> Map.singleton name val
+      _                -> Map.empty
+
+
 
 merakibtn = "px-6 py-2 font-medium tracking-wide text-white capitalize transition-colors duration-300 transform bg-blue-600 rounded-lg hover:bg-blue-500 focus:outline-none focus:ring focus:ring-blue-300 focus:ring-opacity-80"
 
-myHtml :: Html (Constant t) ()
+
+--------------------------------------------------------------------------------
+data MyClicked :: Effect where
+  MyClicked :: Event -> MyClicked m ()
+
+type instance DispatchOf MyClicked = Dynamic
+
+
+runMyClicked :: DOM :> es => Eff (MyClicked : es) a -> Eff es a
+runMyClicked = interpret $ \_ -> \case
+  MyClicked _ -> consoleLog "clicked!"
+
+--------------------------------------------------------------------------------
+
+myHtml :: (DOM :> es, MyClicked :> es) => Html (Constant t) () (Handler es)
 myHtml = div_ []
               [ pure $ button_ [ pure (id_ $ pure "minButton")
                                , pure (classes_ $ pure [ merakibtn
@@ -139,48 +177,95 @@ myHtml = div_ []
                                [ pure $ textNode_ "-" ]
               , pure $ textNode_ "woei"
               , pure $ button_ [ pure (classes_ $ pure [merakibtn])
+                               , pure (onClick_ $ pure MyClicked)
                                ]
                                [pure $ textNode_ "+"]
               ]
 
 -- | Renders clasess
-classes_ :: (Functor f, Foldable list) => f (list Text) -> (AttributeName, f Text)
+classes_ :: (Functor f, Foldable list) => f (list Text)
+         -> Attr f Text evt
 classes_ = class_ . fmap (Text.unwords . toList)
 
-class_   :: f Text -> (AttributeName, f Text)
-class_ v = (AttributeName "class", v)
+class_   :: f Text -> Attr f Text evt
+class_ v = Attribute (AttributeName "class") v
 
-id_     :: f Text  -> (AttributeName, f Text)
-id_ v   = (AttributeName "id", v)
+id_     :: f Text  -> Attr f Text evt
+id_ v   = Attribute (AttributeName "id") v
 
 
-div_ :: Applicative f => [f (AttributeName, f Text)] -> [f (Html f ())] -> Html f ()
+div_ :: Applicative f => [f (Attr f Text evt)] -> [f (Html f () evt)] -> Html f () evt
 div_ = el_ (ElementName "div")
 
-button_ :: Applicative f => [f (AttributeName, f Text)] -> [f (Html f ())] -> Html f ()
+button_ :: Applicative f => [f (Attr f Text evt)] -> [f (Html f () evt)] -> Html f () evt
 button_ = el_ (ElementName "button")
 
 
+type EventHandler e es = Event -> e (Eff es) ()
+
+-- | Data type representing the type of actions we can take;
+data Act es where
+  -- | Every action is actually just a function from Event to an Effect
+  Handler :: ( e :> es, DispatchOf e ~ Dynamic) => EventHandler e es  -> Act es
+
+onEvent_              :: (Functor f, e :> es, DispatchOf e ~ Dynamic)
+                      => EventName -> f (EventHandler e es) -> Attr f Text (Act es)
+onEvent_ eventName fh = OnEvent eventName (Handler <$> fh)
+
+onClick_ :: (Functor f, e :> es, DispatchOf e ~ Dynamic)
+         => f (EventHandler e es) -> Attr f Text (Act es)
+onClick_ = onEvent_ (EventName "click")
+
+-- onClick_   :: ( DispatchOf e ~ Dynamic
+--               , e :> es
+--               , Functor f
+--               )
+--            => f (Event -> e (Eff es) ()) -> Attr f Text (EventAct es)
+-- onClick_ h = OnEvent (EventName "click") ((send .) <$> h)
+
+-- $ pure $ \_evt -> consoleLog "clicked!"
+
+----------------------------------------
+
+-- type EventAct es = Event -> Eff es ()
+
 -- | renders the given Html tree
 construct      :: (IsNode parent, DOM :> es)
-               => parent -> Html (Constant t) a -> Eff es (Html (Constant t) Node)
+               => parent
+               -> Html (Constant t) a (Act es)
+               -> Eff es (Html (Constant t) Node (Act es))
 construct root = go (asNode root)
   where
-    go        :: DOM :> es => Node -> Html (Constant t) a -> Eff es (Html (Constant t) Node)
+    go        :: DOM :> es
+              => Node -> Html (Constant t) a (Act es)
+              -> Eff es (Html (Constant t) Node (Act es))
     go parent = \case
-      TextNode _ text       -> do node <- asChildOf parent $ createTextNode (coerce text)
-                                  pure $ TextNode node text
-      Element tag _ ats chs -> do node <- asChildOf parent $ createElement tag
-                                  chs' <- traverse (go node)
-                                                   (coerce @_ @(Seq.Seq (Html (Constant _) _)) chs)
-                                  sequenceA_ [ setAttribute node attr (getConstant val)
-                                             | (attr,val) <-
-                                                 Map.toAscList (getConstant ats)
-                                             ]
-                                  pure $ Element tag node ats (coerce chs')
+      TextNode _ text            -> do node <- asChildOf parent $ createTextNode (coerce text)
+                                       pure $ TextNode node text
+      Element tag _ ats evts chs -> do node <- asChildOf parent $ createElement tag
+                                       chs' <- traverse (go node)
+                                                        (coerce @_ @(Seq.Seq (Html (Constant _) _ _)) chs)
+                                       sequenceA_ [ setAttribute node attr (getConstant val)
+                                                  | (attr,val) <-
+                                                      Map.toAscList (getConstant ats)
+                                                  ]
+
+                                       -- maybe we should store the JsEventListener's
+                                       -- this returns.
+                                       sequenceA_ [ case getConstant handler of
+                                                      Handler h ->
+                                                        void $ addEventListener' node event (send . h)
+                                                  | (event,handler) <-
+                                                      Map.toAscList (getConstant evts)
+                                                  ]
+
+                                       pure $ Element tag node ats evts (coerce chs')
+
 
 --------------------------------------------------------------------------------
 
+-- | Given a parent and some code to create a child node, run the
+-- cration code and add it append it to the children of the parent.
 asChildOf               :: (IsNode parent, IsNode child, DOM :> es)
                         => parent -> Eff es child -> Eff es child
 asChildOf parent create = do new <- create
@@ -231,7 +316,7 @@ main = runEff . evalDOM $ withRuntime myMain
 
       --------------------------------------------------------------------------------
 
-      construct body myHtml
+      runMyClicked $ construct body myHtml
 
       --------------------------------------------------------------------------------
 
@@ -241,23 +326,46 @@ main = runEff . evalDOM $ withRuntime myMain
 
       let doubleCounter = Derive counter (*2)
 
-      let handler     :: Event -> Eff (HasRuntime ls t : ls) ()
-          handler evt = do
-              consoleLog "- clicked"
-              v <- modifySignal ctx counter pred
-              setTextContent textValue ("counter 1 : " <> Text.show v)
 
-          myMinEffect :: Eff (HasRuntime ls t : ls) ()
-          myMinEffect = void $ addEventListener minButton (EventName "click") handler
 
-      createEffect_ ctx myMinEffect
+      -- let handler     :: Event -> Eff (HasRuntime ls t : ls) ()
+      let minEffect :: Eff (HasRuntime ls t : ls) ()
+          minEffect = do
+            consoleLog "minEffect fired"
+            v <- getSignal ctx counter
+            setTextContent textValue ("counter 1 : " <> Text.show v)
 
-      createEffect_ ctx $ do
-            void $ addEventListener' plusButton (EventName "click") $ \evt -> do
-              consoleLog "+ clicked"
+          -- handler     :: Event -> Eff es ()
+          -- handler evt =
+          --   -- createEffect_ ctx $ do
+          --     -- if we use evt we should be careful; since we want to use the latest event.
+          --     -- not the original one
+
+      minClickedEffect <- registerEffect minEffect
+          -- myMinEffect :: Eff (HasRuntime ls t : ls) ()
+          -- myMinEffect = void $ addEventListener minButton (EventName "click") handler
+      void $ addEventListener' minButton (EventName "click") $ \_evt -> do
+                consoleLog "- clicked"
+                modifySignal ctx counter pred
+                runEffect ctx minClickedEffect
+
+      -- myMinEffect
+
+      let plusEff :: Eff (HasRuntime ls t : ls) ()
+          plusEff = do
+              consoleLog "plusEff fired"
               setTextContent textValue "+ clicked"
-              v <- modifySignal ctx counter succ
+              v <- getSignal ctx counter
               setTextContent textValue ("counter 1 : " <> Text.show v)
+
+      plusClickedEffect <- registerEffect plusEff
+
+
+
+      void $ addEventListener' plusButton (EventName "click") $ \_evt -> do
+          consoleLog "+ clicked"
+          modifySignal ctx counter succ
+          runEffect ctx plusClickedEffect
 
       createEffect_ ctx $ do
         let f x = "double counter1 value: " <> Text.show x
@@ -265,6 +373,8 @@ main = runEff . evalDOM $ withRuntime myMain
 
 
       --------------------------------------------------------------------------------
+
+{-
       createEffect_ ctx $ do
             void $ addEventListener' plusButton2 (EventName "click") $ \evt -> do
               consoleLog "+ button 2 clicked"
@@ -273,13 +383,13 @@ main = runEff . evalDOM $ withRuntime myMain
             void $ addEventListener' minButton2 (EventName "click") $ \evt -> do
               consoleLog "- button 2 clicked"
               modifySignal_ ctx counter2 pred
-
       let combined = (+) <$> varying counter <*> varying counter2
           combinedText = (\x -> "combined text" <> Text.show x)
                          <$> combined
 
       createEffect_ ctx $ do
         setTextContent combinedValue =<< current ctx combinedText
+-}
 
 --------------------------------------------------------------------------------
 
@@ -289,14 +399,14 @@ main = runEff . evalDOM $ withRuntime myMain
 --------------------------------------------------------------------------------
 
 
-addEventListener' :: forall ls target t.
+addEventListener' :: forall es target t.
                     ( IsEventTarget target
-                    , DOM :> ls
+                    , DOM :> es
                     -- , ls ~ '[IOE]
                     )
                  => target -> EventName
-                 -> (Event -> Eff (HasRuntime ls t : ls) ())
-                 -> Eff (HasRuntime ls t : ls) JsEventListener
+                 -> (Event -> Eff es ())
+                 -> Eff es JsEventListener
 addEventListener' = addEventListener
 
   -- undefined -- addEventListenerWith runEff
