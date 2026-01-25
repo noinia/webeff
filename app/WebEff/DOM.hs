@@ -38,7 +38,7 @@ import           Effectful
 import           Effectful.Dispatch.Static
 import           Effectful.Dispatch.Static.Unsafe
 import           Effectful.Reader.Static
-import           GHC.Wasm.Prim (JSVal)
+import           WebEff.FFI.Prim (JSVal)
 import           WebEff.FFI.Classes
 import           WebEff.FFI
 import           WebEff.FFI.Types

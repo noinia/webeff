@@ -1,4 +1,34 @@
-module WebEff.FFI where
+module WebEff.FFI
+  ( js_document
+  , js_body
+  , js_head
+  , js_window
+  , js_getParent
+  , js_log
+  , js_createTextNode
+  , js_createElement
+  , js_set_text_content
+  , js_appendChild
+  , js_insertBefore
+  , js_removeChild
+  , js_removeSelf
+  , js_removeAttribute
+  , js_setAttributeString
+  , js_setAttributeDouble
+  , js_setAttributeBool
+  , js_setAttributeInt
+
+  , js_addEventListener
+  , js_remove_event_listener
+
+  , js_getProperty_JSVal
+  , js_getProperty_Double
+  , js_getProperty_Float
+  , js_getProperty_String
+  , js_getProperty_Int
+
+  , js_setProperty_String
+  ) where
 
 import           Data.Coerce
 import           Data.String (IsString(..))

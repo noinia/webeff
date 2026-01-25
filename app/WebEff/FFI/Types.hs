@@ -5,7 +5,7 @@ import           Data.Coerce
 import           Data.String (IsString(..))
 import           Data.Text (Text)
 import qualified Data.Text as Text
-import           GHC.Wasm.Prim
+import           WebEff.FFI.Prim
 
 --------------------------------------------------------------------------------
 
