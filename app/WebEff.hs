@@ -2,25 +2,16 @@
 {-# LANGUAGE AllowAmbiguousTypes  #-}
 module WebEff(main) where
 
-
-import Control.Lens
 import Control.Monad
 import Data.Coerce
-import Data.Dynamic qualified as Dynamic
 import Data.Foldable
 import Data.Functor.Classes
-import Data.IntMap (IntMap)
-import Data.Kind (Type)
 import Data.Map qualified as Map
 import Data.Sequence qualified as Seq
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.Typeable
 import Effectful
-import Effectful.Dispatch.Static
-import Effectful.State.Static.Shared
 import WebEff.DOM
-import WebEff.FFI
 import WebEff.FFI.Types
 import WebEff.Reactive
 import WebEff.Runtime
@@ -167,7 +158,7 @@ runMyClicked = interpret $ \_ -> \case
 
 --------------------------------------------------------------------------------
 
-myHtml :: (DOM :> es, MyClicked :> es) => Html (Constant t) () (Handler es)
+myHtml :: (DOM :> es, MyClicked :> es) => Html (Constant t) () (Act es)
 myHtml = div_ []
               [ pure $ button_ [ pure (id_ $ pure "minButton")
                                , pure (classes_ $ pure [ merakibtn
@@ -188,10 +179,10 @@ classes_ :: (Functor f, Foldable list) => f (list Text)
 classes_ = class_ . fmap (Text.unwords . toList)
 
 class_   :: f Text -> Attr f Text evt
-class_ v = Attribute (AttributeName "class") v
+class_ = Attribute (AttributeName "class")
 
 id_     :: f Text  -> Attr f Text evt
-id_ v   = Attribute (AttributeName "id") v
+id_ = Attribute (AttributeName "id")
 
 
 div_ :: Applicative f => [f (Attr f Text evt)] -> [f (Html f () evt)] -> Html f () evt
@@ -227,7 +218,95 @@ onClick_ = onEvent_ (EventName "click")
 
 ----------------------------------------
 
--- type EventAct es = Event -> Eff es ()
+data CreateInfo t where
+  CreatedTextNode :: Node
+                  -- ^ Ref to the node we created
+                  -> RegisteredEffect t ()
+                  -- ^ Effect that sets the text
+                  -> Maybe (RegisteredEffect t ())
+                  -- ^ Effect to create and add the node
+                  -> CreateInfo t
+
+
+-- | Constructs a text node of the given parent; the content will automatically update
+constructVaryingTextNode                 :: ( IsNode parent, DOM :> es
+                                            , HasRuntime ls t :> es, Subset ls es
+                                            , DOM :> ls
+                                            )
+                                         => Ctx ls t
+                                         -> parent -> Varying t Text
+                                         -> Eff es (Html (Varying t) (CreateInfo t) (Act es))
+constructVaryingTextNode ctx parent text =
+  do node       <- asChildOf parent $ createTextNode ""
+     (effIx, _) <- createEffect ctx $ current ctx text >>= setTextContent node
+     pure $ TextNode (CreatedTextNode node effIx Nothing) text
+
+-- constructVaryingTextNode'                 :: ( IsNode parent, DOM :> es
+--                                             , HasRuntime ls t :> es, Subset ls es
+--                                             , DOM :> ls
+--                                             )
+--                                           => Ctx ls t
+--                                           -> parent
+--                                           -> Text -- initial text
+--                                           -> Varying t (Maybe Text)
+--                                           -> Eff es (Html (Varying t) (CreateInfo t) (Act es))
+-- constructVaryingTextNode' ctx parent i text = do
+--   createEffect ctx $ current text >>= \case
+--     Nothing -> pure Nothing
+--     Just t  -> pure $ TextNode
+
+-- constructNode :: Ctx ls t -> parent -> Varying (Html (Varying t) a (Act es))
+
+
+-- -- | renders the given Html tree
+-- constructVarying      :: forall ls t es parent a.
+--                          ( IsNode parent, DOM :> es
+--                          , HasRuntime ls t :> es, Subset ls es
+--                          , DOM :> ls
+--                          )
+--                       => Ctx ls t
+--                       -> parent
+--                       -> Html (Varying t) a (Act es)
+--                       -> Eff es (Html (Varying t) Node (Act es))
+-- constructVarying ctx root = go (asNode root)
+--   where
+--     go        :: Node -> Html (Varying t) a (Act es)
+--               -> Eff es (Html (Varying t) Node (Act es))
+--     go parent = \case
+--       TextNode _ text            ->
+--           do node   <- asChildOf parent $ createTextNode ""
+--              _effIx <- createEffect ctx $ current ctx text >>= setTextContent node
+--              pure $ TextNode node text
+--       Element tag _ vAts vEvts vChs ->
+--           do node <- asChildOf parent $ createElement tag
+--              _    <- createEffect ctx $ do
+--                chs  <- current ctx vChs
+--                chs' <- traverse (\c -> do _ <- createEffect ctx $ current ctx >>= go node
+
+--                                             ) chs
+
+--              -- sequenceA_ [ setAttribute node attr (getConstant val)
+--              --            | (attr,val) <-
+--              --                Map.toAscList (getConstant ats)
+--              --            ]
+
+--              -- maybe we should store the JsEventListener's
+--              -- this returns.
+--              sequenceA_ [ case getConstant handler of
+--                             Handler h ->
+--                               void $ addEventListener' node event (send . h)
+--                         | (event,handler) <-
+--                             Map.toAscList (getConstant evts)
+--                         ]
+
+--              pure $ Element tag node ats evts (coerce chs')
+
+--     go' :: Node -> Varying t
+-- (go node)
+--                               (coerce @_ @(Seq.Seq (Html (Varying _) _ _)) chs)
+
+
+
 
 -- | renders the given Html tree
 construct      :: (IsNode parent, DOM :> es)
@@ -240,26 +319,24 @@ construct root = go (asNode root)
               => Node -> Html (Constant t) a (Act es)
               -> Eff es (Html (Constant t) Node (Act es))
     go parent = \case
-      TextNode _ text            -> do node <- asChildOf parent $ createTextNode (coerce text)
-                                       pure $ TextNode node text
-      Element tag _ ats evts chs -> do node <- asChildOf parent $ createElement tag
-                                       chs' <- traverse (go node)
-                                                        (coerce @_ @(Seq.Seq (Html (Constant _) _ _)) chs)
-                                       sequenceA_ [ setAttribute node attr (getConstant val)
-                                                  | (attr,val) <-
-                                                      Map.toAscList (getConstant ats)
-                                                  ]
+      TextNode _ text            ->
+          do node <- asChildOf parent $ createTextNode (coerce text)
+             pure $ TextNode node text
+      Element tag _ ats evts chs ->
+          do node <- asChildOf parent $ createElement tag
+             chs' <- traverse (go node)
+                     (coerce @_ @(Seq.Seq (Html (Constant _) _ _)) chs)
+             sequenceA_ [ setAttribute node attr (getConstant val)
+                        | (attr,val) <- Map.toAscList (getConstant ats)
+                        ]
+             -- maybe we should store the JsEventListener's
+             -- this returns.
+             sequenceA_ [ case getConstant handler of
+                            Handler h -> void $ addEventListener' node event (send . h)
+                        | (event,handler) <- Map.toAscList (getConstant evts)
+                        ]
 
-                                       -- maybe we should store the JsEventListener's
-                                       -- this returns.
-                                       sequenceA_ [ case getConstant handler of
-                                                      Handler h ->
-                                                        void $ addEventListener' node event (send . h)
-                                                  | (event,handler) <-
-                                                      Map.toAscList (getConstant evts)
-                                                  ]
-
-                                       pure $ Element tag node ats evts (coerce chs')
+             pure $ Element tag node ats evts (coerce chs')
 
 
 --------------------------------------------------------------------------------
@@ -277,6 +354,12 @@ tailwindCss = URL "https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"
 
 flowByte :: URL
 flowByte = URL "https://cdn.jsdelivr.net/npm/flowbite@3.1.2/dist/flowbite.min.css"
+
+
+
+
+
+
 
 main :: IO ()
 main = runEff . evalDOM $ withRuntime myMain

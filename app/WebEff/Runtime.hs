@@ -6,7 +6,8 @@ module WebEff.Runtime
   , nextSignalId, rawSignals
   , signalAt, signalAt'
   , signalAtDyn, signalAtDyn'
-  , nextEffectId, rawEffects, effectAt
+  , nextEffectId, rawEffects
+  , effectAt, effectAt'
 
   , HasRuntime
 
@@ -19,7 +20,6 @@ module WebEff.Runtime
   , Signal(..)
 
   , RegisteredEffect(..)
-
   -- , createEffect'
   -- , runEffect'
 
@@ -30,9 +30,7 @@ module WebEff.Runtime
 
 import Data.Kind(Type)
 import Data.Proxy
-import Data.Foldable
 import Data.Maybe (fromMaybe)
-import Data.Bifunctor
 import Data.Coerce
 import Control.Lens
 import Data.EnumSet qualified as Set
@@ -41,18 +39,17 @@ import Data.IntMap qualified as IntMap
 import Data.Dynamic qualified as Dynamic
 import Data.Dynamic (Typeable)
 import Effectful
-import Data.Dynamic.Lens qualified as LensDynamic
 import Data.Dynamic.Lens (_Dynamic)
 import Effectful.State.Static.Shared
 import WebEff.Signal.Type
 --------------------------------------------------------------------------------
 
-newtype RegisteredEffect t = RegisteredEffect Int
-                           deriving (Show,Eq,Ord,Enum)
-
+-- | An effect that produces something of type r
+newtype RegisteredEffect t r = RegisteredEffect Int
+                             deriving (Show,Eq,Ord,Enum)
 
 data SignalData t a = SignalData { _theValue    :: a
-                                 , _subscribers :: Set.EnumSet (RegisteredEffect t)
+                                 , _subscribers :: Set.EnumSet (RegisteredEffect t Dynamic.Dynamic)
                                  }
                     deriving (Functor,Foldable,Traversable)
 
@@ -64,12 +61,13 @@ signalValue = theValue._Dynamic
 
 --------------------------------------------------------------------------------
 
-data Runtime ls t = Runtime { _rawSignals    :: IntMap (SignalData t Dynamic.Dynamic)
-                            , _nextSignalId  :: {-# UNPACK#-}!Int
-                            , _rawEffects    :: IntMap (Eff (State (Runtime ls t) : ls) ())
-                            , _nextEffectId  :: {-# UNPACK#-}!Int
-                            , _currentEffect :: Maybe (RegisteredEffect t)
-                            }
+data Runtime ls t = Runtime
+                    { _rawSignals    :: IntMap (SignalData t Dynamic.Dynamic)
+                    , _nextSignalId  :: {-# UNPACK#-}!Int
+                    , _rawEffects    :: IntMap (Eff (State (Runtime ls t) : ls) Dynamic.Dynamic)
+                    , _nextEffectId  :: {-# UNPACK#-}!Int
+                    , _currentEffect :: Maybe (RegisteredEffect t Dynamic.Dynamic)
+                    }
 
 makeLenses ''Runtime
 
@@ -97,7 +95,7 @@ signalAt signal = signalAtDyn signal . wrap
 -- | Access the signalData for a given signal. This gives accessto the Signal Data
 -- as a Dynamic.
 signalAtDyn        :: Signal t a -> Traversal' (Runtime ls t) (SignalData t Dynamic.Dynamic)
-signalAtDyn signal = rawSignals.at (coerce signal)._Just
+signalAtDyn signal = rawSignals.ix (coerce signal)
 
 -- | Access the signalData at a given signal
 signalAt'        :: Typeable a => Signal t a -> Lens' (Runtime ls t) (SignalData t a)
@@ -109,9 +107,37 @@ signalAtDyn'        :: Signal t a -> Lens' (Runtime ls t) (SignalData t Dynamic.
 signalAtDyn' signal = singular (signalAtDyn signal)
 
 
-effectAt       :: RegisteredEffect t
-               -> Traversal' (Runtime ls t) (Eff (State (Runtime ls t) : ls) ())
-effectAt effIx = rawEffects.ix (coerce effIx)
+
+--------------------------------------------------------------------------------
+
+-- | Access the Effect at the given location.
+--
+-- pre: this result better exist.
+effectAt'       :: forall ls t r. Typeable r
+               => RegisteredEffect t r
+               -> Lens' (Runtime ls t) (Eff (State (Runtime ls t) : ls) r)
+effectAt' effIx = singular (effectAt effIx)
+
+-- | Access the effect at the given location
+effectAt       :: forall ls t r. Typeable r
+               => RegisteredEffect t r
+               -> Traversal' (Runtime ls t) (Eff (State (Runtime ls t) : ls) r)
+effectAt effIx = effectAtDyn' effIx . wrap
+  where
+    wrap   :: forall f es. (Applicative f)
+           => (Eff es r -> f (Eff es r))
+           -> Eff es Dynamic.Dynamic -> f (Eff es Dynamic.Dynamic)
+    wrap f = fmap (fmap Dynamic.toDyn) . f . fmap fromDynamic'
+
+    fromDynamic' :: Dynamic.Dynamic -> r
+    fromDynamic' = fromMaybe (error "signalAt. wrong type?") . Dynamic.fromDynamic
+
+-- | Get the effect
+effectAtDyn'       :: RegisteredEffect t r
+                   -> Traversal' (Runtime ls t) (Eff (State (Runtime ls t) : ls) Dynamic.Dynamic)
+effectAtDyn' effIx = rawEffects.ix (coerce effIx)
+
+
 
 --------------------------------------------------------------------------------
 
