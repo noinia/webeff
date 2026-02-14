@@ -4,6 +4,7 @@ module WebEff.DOM
 
   , jsDocument
   , jsBody
+  , jsWindow
   , jsHead
   , getParent
   , consoleLog
@@ -33,16 +34,12 @@ module WebEff.DOM
 
 import           Data.Coerce
 import           Data.Text (Text)
-import qualified Data.Text as Text
 import           Effectful
 import           Effectful.Dispatch.Static
-import           Effectful.Dispatch.Static.Unsafe
-import           Effectful.Reader.Static
 import           WebEff.FFI.Prim (JSVal)
 import           WebEff.FFI.Classes
 import           WebEff.FFI
 import           WebEff.FFI.Types
-import           Effectful.Internal.Monad (concUnliftIO )
 
 --------------------------------------------------------------------------------
 

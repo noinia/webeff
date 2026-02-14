@@ -3,6 +3,7 @@ module WebEff.Varying
   ( Varying
   , varying
   , constant
+  , asConstant
   ) where
 
 import Data.IntMap qualified as IntMap
@@ -42,6 +43,13 @@ varying signal = Varying signals f
       Nothing -> error "varying: wrong type!? "
       Just x  -> x
 
+-- | If the varying is actually a constant that does not depend on any signals
+-- then return the constant value.
+asConstant :: Varying t b -> Maybe b
+asConstant = \case
+  Varying signals f | IntSet.null signals -> Just $ f IntMap.empty
+                    | otherwise           -> Nothing
+
 --------------------------------------------------------------------------------
 
 instance Functor (Varying t) where
@@ -62,3 +70,5 @@ instance (HasRuntime ls t :> es) => HasCurrent ls t es Varying a where
       signalValues = IntMap.fromSet (untypedGetSignalDyn ctx) signals
       -- we get thevalues from the sginals (as untyped dyns); making sure to register
       -- that we access those signal values.
+
+--------------------------------------------------------------------------------
